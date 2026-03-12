@@ -1,0 +1,8 @@
+.idea/
+.venv/
+__pycache__/
+.env
+output_notes/
+output_notes_web/
+temp/
+*.pyc

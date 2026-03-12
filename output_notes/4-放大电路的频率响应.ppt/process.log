@@ -1,4 +1,0 @@
-2026-03-12 20:39:34,456 [INFO] 开始处理：C:\Users\10972\Desktop\code\NCWUStudyHub\input_ppt\4-放大电路的频率响应.ppt.pptx
-2026-03-12 20:39:35,217 [INFO] 提取完成：slide=38 image=21
-2026-03-12 20:39:35,235 [WARNING] AI 生成失败，将使用回退笔记模板：未配置 AI（缺少 OPENAI_API_KEY 或 OPENAI_BASE_URL）
-2026-03-12 20:39:35,240 [INFO] 处理完成：4-放大电路的频率响应.ppt.pptx
