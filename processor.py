@@ -7,26 +7,20 @@ from typing import Callable
 
 from ai_writer import AIWriter
 from extractor import extract_pptx_content
-from formatter import build_ai_source_markdown, build_final_note, build_raw_text_markdown
+from formatter import build_ai_source_markdown, build_basic_note, build_final_note, build_raw_text_markdown
 from utils import ensure_dir, now_iso, safe_name, setup_file_logger, write_json, write_text
 
 StatusCallback = Callable[[str], None]
 
 
-def process_single_pptx(
-    src_file: Path,
-    output_root: Path,
-    overwrite: bool,
-    ai_writer: AIWriter,
-    output_stem: str | None = None,
-    status_callback: StatusCallback | None = None,
-) -> dict:
-    result = {
-        "file_name": src_file.name,
-        "source_file": str(src_file.resolve()),
+def _empty_result(file_name: str) -> dict:
+    return {
+        "file_name": file_name,
+        "source_file": "",
         "success": False,
         "error": None,
         "warning": None,
+        "mode": "basic",
         "slide_count": 0,
         "image_count": 0,
         "ai_used": False,
@@ -40,7 +34,22 @@ def process_single_pptx(
         "raw_text_preview": "",
         "note_preview": "",
         "gallery_images": [],
+        "key_images": [],
     }
+
+
+def process_single_pptx(
+    src_file: Path,
+    output_root: Path,
+    overwrite: bool,
+    ai_writer: AIWriter,
+    mode: str = "basic",
+    output_stem: str | None = None,
+    status_callback: StatusCallback | None = None,
+) -> dict:
+    result = _empty_result(src_file.name)
+    result["source_file"] = str(src_file.resolve())
+    result["mode"] = mode
 
     def emit(msg: str) -> None:
         if status_callback:
@@ -67,7 +76,6 @@ def process_single_pptx(
     images_dir = ensure_dir(target_dir / "images")
     process_log_path = target_dir / "process.log"
     file_logger = setup_file_logger(process_log_path)
-
     result["process_log_path"] = str(process_log_path.resolve())
 
     meta = {
@@ -75,6 +83,7 @@ def process_single_pptx(
         "source_name": src_file.name,
         "source_suffix": src_file.suffix.lower(),
         "processed_at": now_iso(),
+        "mode": mode,
         "success": False,
         "slide_count": 0,
         "image_count": 0,
@@ -111,36 +120,37 @@ def process_single_pptx(
         write_json(cleaned_slides_path, cleaned_data)
         result["cleaned_slides_path"] = str(cleaned_slides_path.resolve())
 
-        ai_source = build_ai_source_markdown(src_file.stem, slides)
-        ai_note = None
+        basic_note, key_images = build_basic_note(src_file.stem, slides)
+        final_note = basic_note
+        result["key_images"] = key_images
+        result["gallery_images"] = [str((target_dir / item["path"]).resolve()) for item in key_images]
+
+        requested_ai = mode == "ai"
         ai_error = None
+        if requested_ai:
+            if ai_writer.is_available():
+                emit(f"[{src_file.name}] 正在调用 AI 增强")
+                ai_source = build_ai_source_markdown(src_file.stem, slides, basic_note=basic_note)
+                ai_note, ai_error = ai_writer.generate_note(src_file.stem, ai_source)
+                if ai_error:
+                    file_logger.warning("AI 增强失败，自动降级普通模式: %s", ai_error)
+                else:
+                    final_note = build_final_note(src_file.stem, slides, ai_note)
+                    result["ai_used"] = True
+                    meta["ai_used"] = True
+            else:
+                ai_error = "AI 增强模式需要有效 API Key"
+                file_logger.warning(ai_error)
 
-        if ai_writer.is_available():
-            emit(f"[{src_file.name}] 正在调用 AI")
-            ai_note, ai_error = ai_writer.generate_note(src_file.stem, ai_source)
-        else:
-            ai_error = "AI 未启用"
+            if ai_error:
+                result["ai_error"] = ai_error
+                meta["ai_error"] = ai_error
+                result["warning"] = "AI 未启用或生成失败，已自动降级为普通模式结果"
 
-        if ai_error:
-            meta["ai_error"] = ai_error
-            result["ai_error"] = ai_error
-            result["warning"] = "AI 未启用或生成失败，仅展示原始提取结果"
-            file_logger.warning("AI 生成失败或未启用: %s", ai_error)
-        else:
-            meta["ai_used"] = True
-            result["ai_used"] = True
-
-        final_note = build_final_note(src_file.stem, slides, ai_note)
         note_path = target_dir / "note.md"
         write_text(note_path, final_note)
         result["note_path"] = str(note_path.resolve())
         result["note_preview"] = final_note
-
-        gallery_images = []
-        for slide in slides:
-            for rel_path in slide.get("image_paths", []):
-                gallery_images.append(str((target_dir / rel_path).resolve()))
-        result["gallery_images"] = gallery_images
 
         result["success"] = True
         meta["success"] = True
@@ -165,6 +175,7 @@ def process_single_pptx(
 
 def process_ppt_files(
     uploaded_files,
+    mode: str = "basic",
     api_key: str | None = None,
     api_base: str | None = None,
     model: str | None = None,
@@ -172,9 +183,6 @@ def process_ppt_files(
     overwrite: bool = True,
     status_callback: StatusCallback | None = None,
 ) -> dict:
-    """
-    Web-oriented controller used by Gradio.
-    """
     output_root = ensure_dir(Path(output_dir).resolve())
     temp_root = ensure_dir(Path("temp").resolve())
     session_dir = ensure_dir(temp_root / f"uploads_{now_iso().replace(':', '-').replace('+', '_')}")
@@ -185,6 +193,10 @@ def process_ppt_files(
         logs.append(msg)
         if status_callback:
             status_callback(msg)
+
+    mode = (mode or "basic").strip().lower()
+    if mode not in {"basic", "ai"}:
+        mode = "basic"
 
     writer = AIWriter(
         api_key=api_key or os.getenv("OPENAI_API_KEY"),
@@ -201,42 +213,32 @@ def process_ppt_files(
             "success_count": 0,
             "fail_count": 0,
             "output_dir": str(output_root),
+            "mode": mode,
         }
+
+    if mode == "ai" and not writer.is_available():
+        emit("当前选择 AI 增强模式，但未配置有效 API Key，将自动降级为普通模式结果。")
 
     results: list[dict] = []
     used_stems: dict[str, int] = {}
+    total = len(uploaded_files)
     for idx, file_obj in enumerate(uploaded_files, start=1):
         source_path = getattr(file_obj, "name", file_obj)
         src_file = Path(str(source_path))
-        emit(f"[{idx}/{len(uploaded_files)}] 准备处理 {src_file.name}")
+        emit(f"[{idx}/{total}] 准备处理 {src_file.name}")
 
         if src_file.suffix.lower() != ".pptx":
-            results.append(
-                {
-                    "file_name": src_file.name,
-                    "success": False,
-                    "error": "仅支持 .pptx 文件",
-                    "warning": None,
-                    "slide_count": 0,
-                    "image_count": 0,
-                    "ai_used": False,
-                    "ai_error": None,
-                    "output_dir": "",
-                    "raw_text_path": "",
-                    "cleaned_slides_path": "",
-                    "note_path": "",
-                    "meta_path": "",
-                    "process_log_path": "",
-                    "raw_text_preview": "",
-                    "note_preview": "",
-                    "gallery_images": [],
-                }
-            )
+            item = _empty_result(src_file.name)
+            item["error"] = "仅支持 .pptx 文件"
+            item["mode"] = mode
+            results.append(item)
+            emit(f"[{src_file.name}] 文件格式不支持，已跳过")
             continue
 
         copied_name = f"{idx:03d}_{safe_name(src_file.name)}"
         copied_path = session_dir / copied_name
         shutil.copy2(src_file, copied_path)
+
         base_stem = safe_name(src_file.stem)
         used_stems[base_stem] = used_stems.get(base_stem, 0) + 1
         output_stem = base_stem if used_stems[base_stem] == 1 else f"{base_stem}_{used_stems[base_stem]}"
@@ -246,10 +248,10 @@ def process_ppt_files(
             output_root=output_root,
             overwrite=overwrite,
             ai_writer=writer,
+            mode=mode,
             output_stem=output_stem,
             status_callback=emit,
         )
-        # keep original upload name for UI
         item_result["file_name"] = src_file.name
         results.append(item_result)
 
@@ -263,4 +265,5 @@ def process_ppt_files(
         "success_count": success_count,
         "fail_count": fail_count,
         "output_dir": str(output_root),
+        "mode": mode,
     }

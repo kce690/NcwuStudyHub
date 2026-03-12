@@ -1,39 +1,60 @@
 # NCWUStudyHub
 
-NCWUStudyHub 是一个本地可运行的 Gradio Web 应用：上传 `.pptx` 后，自动提取文本和图片，并生成适合大学生复习的 Markdown 学习笔记。
+NCWUStudyHub 是一个本地运行的 PPT 学习资料整理 Web 工具。上传 `.pptx` 后，系统会提取文字和图片，生成便于大学生复习的 Markdown 笔记。
 
-## 项目简介
+## 核心特性
 
-第一版目标是先跑通本地学习资料整理流程，不做数据库、登录系统、多用户系统。
+1. 两种生成模式
+- 普通模式（无需 API）
+- AI 增强模式（需要 API，失败会自动降级为普通模式）
 
-核心流程：
+2. 三栏 Web 布局（Gradio Blocks）
+- 左侧：上传与控制区
+- 中间：内容展示区
+- 右侧：AI 问答区
 
-1. 上传一个或多个 `.pptx`
-2. 提取每页文字与图片
-3. 调用 AI（可选）生成学习笔记
-4. 网页展示结果并支持下载 `note.md`
-5. 保留中间产物，便于复查
+3. 本地文件输出（每个 PPT 一个目录）
+- `raw_text.md`
+- `cleaned_slides.json`
+- `images/`
+- `note.md`
+- `meta.json`
+- `process.log`
 
-## 功能说明
+## 模式说明
 
-- Web 界面（Gradio Blocks）：
-  - 多文件上传
-  - API Key / Base URL / Model 配置
-  - 输出目录配置
-  - 处理日志
-  - 原始文本预览
-  - 图片 Gallery 预览
-  - Markdown 笔记预览
-  - 下载 `note.md`
-- 本地产物输出（每个 PPT 一个文件夹）：
-  - `raw_text.md`
-  - `cleaned_slides.json`
-  - `images/`
-  - `note.md`
-  - `meta.json`
-  - `process.log`
-- AI 未配置或失败时不会中断流程，仍会保存原始提取结果与回退笔记。
-- 保留 CLI 入口 `main.py`（同样只处理 `.pptx`）。
+### 1) 普通模式（`basic`）
+- 不依赖 AI API
+- 规则驱动整理：
+  - 去空白、去重
+  - 合并碎片文本
+  - 保留标题/正文/项目符号层级
+  - 对图示页标注“本页核心为图示内容”
+- 生成基础版 `note.md`
+
+### 2) AI 增强模式（`ai`）
+- 需要 API Key
+- 在普通模式结果基础上进行提炼和重组
+- 输出中文 Markdown，包含复习提纲与自测题
+- 若 API 缺失或调用失败，自动降级为普通模式，不影响流程
+
+## 右侧 AI 问答如何工作
+
+- 右侧问答会读取“中间区域当前选中文件”的内容作为上下文：
+  - `note.md`（主上下文）
+  - `raw_text.md`（辅助上下文）
+- AI 被要求严格基于上下文回答，不编造。
+- 如果问题超出资料范围，会返回“当前资料中没有足够信息”。
+- 若未配置 API，对话会提示“当前未配置 AI 对话能力”。
+
+## 图片处理策略
+
+- 不会无脑插入所有图片。
+- 仅筛选关键图示（规则驱动）：
+  - 图示主导页面优先保留
+  - 含明显图示关键词页面优先保留
+  - 重复/低信息量图片会被过滤
+- 插图附简短说明，并尽量放在相关小节附近。
 
 ## 项目结构
 
@@ -53,7 +74,7 @@ NCWUStudyHub/
   README.md
 ```
 
-## 安装方式
+## 安装与运行
 
 ### 1) 创建虚拟环境
 
@@ -77,7 +98,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 3) 配置 `.env`
+### 3) 配置环境变量
 
 ```bash
 cp .env.example .env
@@ -97,79 +118,33 @@ OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_MODEL=gpt-4o-mini
 ```
 
-## 运行方式
-
-### 启动 Web 应用（推荐）
+### 4) 启动 Web
 
 ```bash
 python app.py
 ```
 
-默认地址：`http://127.0.0.1:7860`
+浏览器访问：`http://127.0.0.1:7860`
 
-### CLI 用法（保留）
+## CLI（可选保留）
 
 ```bash
-python main.py --input ./input_ppt --output ./output_notes --overwrite
+python main.py --input ./input_ppt --output ./output_notes --mode basic --overwrite
+python main.py --input ./input_ppt --output ./output_notes --mode ai --overwrite
 ```
 
-## Web 页面功能说明
+## Web 使用流程
 
-页面包含：
-
-1. 顶部标题与简介
-2. 左侧输入区
-   - `.pptx` 多文件上传
-   - API Key（密码输入）
-   - Base URL
-   - Model
-   - 输出目录
-   - 开始处理按钮
-3. 右侧输出区
-   - 处理摘要
-   - 处理日志
-   - 文件结果总览表
-   - 按文件查看详情
-   - 原始文本预览
-   - 图片预览
-   - Markdown 笔记预览
-   - `note.md` 下载
-
-## 输出目录示例
-
-```text
-output_notes_web/
-  demo/
-    raw_text.md
-    cleaned_slides.json
-    images/
-      slide_001_img_01.png
-    note.md
-    meta.json
-    process.log
-```
-
-## 简单测试样例
-
-1. 准备 `demo.pptx`（至少 2 页，含 1 页图片）
-2. 启动 `python app.py`
-3. 上传文件并处理
-4. 检查：
-   - 页面是否显示提取文本和图片
-   - 是否生成并可下载 `note.md`
-   - `output_notes_web/demo/` 是否包含中间产物
+1. 左侧上传一个或多个 `.pptx`
+2. 选择处理模式（普通模式 / AI 增强模式）
+3. 点击“开始处理”
+4. 中间查看日志、原始文本、最终笔记、关键图示并下载 `note.md`
+5. 右侧基于当前选中文件继续提问
 
 ## 当前限制
 
 1. 第一版只支持 `.pptx`
 2. 第一版不做 OCR
-3. 第一版不做登录和数据库
-4. AI 未配置时只做原始提取并生成回退笔记
-5. 复杂排版不保证完美还原
-
-## 后续规划
-
-1. OCR 支持（图片文字识别）
-2. 更细粒度结构提取（表格、公式、图文映射）
-3. 多种学习笔记模板
-4. 批量质量评估报告
+3. 普通模式不依赖大模型
+4. 右侧 AI 问答依赖 API 配置
+5. 复杂排版不保证完全还原

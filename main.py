@@ -13,14 +13,15 @@ from utils import ensure_dir, setup_console_logger
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="NCWUStudyHub CLI: extract .pptx and generate notes.")
-    parser.add_argument("--input", required=True, help="Input directory, e.g. ./input_ppt")
-    parser.add_argument("--output", required=True, help="Output directory, e.g. ./output_notes")
-    parser.add_argument("--model", default=None, help="Override model name")
-    parser.add_argument("--api-base", default=None, help="Override API base URL")
-    parser.add_argument("--max-files", type=int, default=None, help="Process only first N files")
-    parser.add_argument("--overwrite", action="store_true", help="Overwrite existing output folders")
-    parser.add_argument("--verbose", action="store_true", help="Verbose logs")
+    parser = argparse.ArgumentParser(description="NCWUStudyHub CLI: .pptx -> 学习笔记")
+    parser.add_argument("--input", required=True, help="输入目录，例如 ./input_ppt")
+    parser.add_argument("--output", required=True, help="输出目录，例如 ./output_notes")
+    parser.add_argument("--mode", choices=["basic", "ai"], default="basic", help="处理模式：basic 或 ai")
+    parser.add_argument("--model", default=None, help="覆盖模型名")
+    parser.add_argument("--api-base", default=None, help="覆盖 API Base URL")
+    parser.add_argument("--max-files", type=int, default=None, help="最多处理 N 个文件")
+    parser.add_argument("--overwrite", action="store_true", help="覆盖已存在输出目录")
+    parser.add_argument("--verbose", action="store_true", help="显示详细日志")
     return parser.parse_args()
 
 
@@ -31,7 +32,6 @@ def main() -> int:
 
     input_dir = Path(args.input).resolve()
     output_dir = ensure_dir(Path(args.output).resolve())
-
     if not input_dir.exists() or not input_dir.is_dir():
         logger.error("输入目录不存在或不是目录: %s", input_dir)
         return 1
@@ -39,7 +39,6 @@ def main() -> int:
     pptx_files = scan_pptx_files(input_dir)
     if args.max_files is not None and args.max_files > 0:
         pptx_files = pptx_files[: args.max_files]
-
     if not pptx_files:
         print(f"未找到可处理的 .pptx 文件。输出目录：{output_dir}")
         return 0
@@ -51,6 +50,9 @@ def main() -> int:
         logger=logger,
     )
 
+    if args.mode == "ai" and not writer.is_available():
+        logger.warning("当前为 AI 增强模式，但 API 未配置，处理时会自动降级普通模式。")
+
     success_count = 0
     fail_count = 0
     for src_file in pptx_files:
@@ -59,6 +61,7 @@ def main() -> int:
             output_root=output_dir,
             overwrite=args.overwrite,
             ai_writer=writer,
+            mode=args.mode,
             status_callback=lambda m: logger.info(m),
         )
         if result.get("success"):
