@@ -35,11 +35,7 @@ def _extract_paragraphs(shape) -> list[dict]:
 
 
 def extract_pptx_content(pptx_path: Path, images_dir: Path, logger) -> tuple[list[dict], dict]:
-    """
-    提取 PPTX 内容：
-    - 每页标题、文本块、项目符号
-    - 每页图片导出并记录相对路径
-    """
+    """Extract slide text hierarchy and images from a .pptx file."""
     presentation = Presentation(str(pptx_path))
     slides_data: list[dict] = []
     total_images = 0
@@ -83,7 +79,7 @@ def extract_pptx_content(pptx_path: Path, images_dir: Path, logger) -> tuple[lis
 
         slide_item = {
             "slide_number": slide_number,
-            "title": title or f"第{slide_number}页",
+            "title": title or f"Slide {slide_number}",
             "text_blocks": text_blocks,
             "bullet_points": bullet_points,
             "image_paths": image_paths,
@@ -97,5 +93,5 @@ def extract_pptx_content(pptx_path: Path, images_dir: Path, logger) -> tuple[lis
         "slide_count": len(slides_data),
         "image_count": total_images,
     }
-    logger.info("提取完成：slide=%s image=%s", stats["slide_count"], stats["image_count"])
+    logger.info("提取完成: slide=%s image=%s", stats["slide_count"], stats["image_count"])
     return slides_data, stats

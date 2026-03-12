@@ -1,42 +1,83 @@
 # NCWUStudyHub
 
-一个本地 Python 工具：把 PPT（第一版优先 `.pptx`）提取为结构化内容，并生成适合大学生复习的 Markdown 学习笔记。
+NCWUStudyHub 是一个本地可运行的 Gradio Web 应用：上传 `.pptx` 后，自动提取文本和图片，并生成适合大学生复习的 Markdown 学习笔记。
 
 ## 项目简介
 
-NCWUStudyHub v1 聚焦“PPT -> 学习笔记”核心流程：
+第一版目标是先跑通本地学习资料整理流程，不做数据库、登录系统、多用户系统。
 
-1. 扫描输入目录中的 `.pptx` / `.ppt`
-2. 提取每一页原生文本（不使用 OCR）
-3. 导出每一页图片
-4. 调用 OpenAI 风格接口整理为 Markdown 笔记
-5. 输出本地文件（含原始文本、结构化 JSON、图片、日志和最终笔记）
+核心流程：
+
+1. 上传一个或多个 `.pptx`
+2. 提取每页文字与图片
+3. 调用 AI（可选）生成学习笔记
+4. 网页展示结果并支持下载 `note.md`
+5. 保留中间产物，便于复查
 
 ## 功能说明
 
-- 支持递归扫描输入目录
-- 优先处理 `.pptx`
-- 在 Windows 上尝试将 `.ppt` 自动转换为 `.pptx`（依赖本机 PowerPoint + `pywin32`）
-- 提取每页：
-  - `slide_number`
-  - `title`
-  - `text_blocks`
-  - `bullet_points`
-  - `image_paths`
-- 单文件失败不影响其他文件
-- AI 调用失败自动回退：仍产出原始提取文件和 `note.md`
-- 处理结束后终端打印摘要（成功数、失败数、输出目录）
+- Web 界面（Gradio Blocks）：
+  - 多文件上传
+  - API Key / Base URL / Model 配置
+  - 输出目录配置
+  - 处理日志
+  - 原始文本预览
+  - 图片 Gallery 预览
+  - Markdown 笔记预览
+  - 下载 `note.md`
+- 本地产物输出（每个 PPT 一个文件夹）：
+  - `raw_text.md`
+  - `cleaned_slides.json`
+  - `images/`
+  - `note.md`
+  - `meta.json`
+  - `process.log`
+- AI 未配置或失败时不会中断流程，仍会保存原始提取结果与回退笔记。
+- 保留 CLI 入口 `main.py`（同样只处理 `.pptx`）。
+
+## 项目结构
+
+```text
+NCWUStudyHub/
+  app.py
+  main.py
+  processor.py
+  ppt_loader.py
+  extractor.py
+  image_exporter.py
+  ai_writer.py
+  formatter.py
+  utils.py
+  requirements.txt
+  .env.example
+  README.md
+```
 
 ## 安装方式
 
-1. 安装 Python 3.10+
-2. 安装依赖：
+### 1) 创建虚拟环境
+
+Windows PowerShell:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+macOS/Linux:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+```
+
+### 2) 安装依赖
 
 ```bash
 pip install -r requirements.txt
 ```
 
-3. 配置环境变量：
+### 3) 配置 `.env`
 
 ```bash
 cp .env.example .env
@@ -48,7 +89,7 @@ Windows PowerShell:
 Copy-Item .env.example .env
 ```
 
-## `.env` 配置说明
+`.env` 示例：
 
 ```env
 OPENAI_API_KEY=your_api_key_here
@@ -56,98 +97,79 @@ OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_MODEL=gpt-4o-mini
 ```
 
-- `OPENAI_API_KEY`：必填（不配置则跳过 AI，走回退模板）
-- `OPENAI_BASE_URL`：OpenAI 风格接口地址
-- `OPENAI_MODEL`：默认模型名
+## 运行方式
 
-## 使用示例
-
-基础命令：
+### 启动 Web 应用（推荐）
 
 ```bash
-python main.py --input ./input_ppt --output ./output_notes
+python app.py
 ```
 
-可选参数：
+默认地址：`http://127.0.0.1:7860`
 
-- `--model`：覆盖模型名
-- `--api-base`：覆盖 API Base URL
-- `--max-files`：最多处理文件数
-- `--overwrite`：覆盖已存在输出目录
-- `--verbose`：打印详细日志
-
-示例：
-
-```bash
-python main.py --input ./input_ppt --output ./output_notes --model gpt-4o-mini --overwrite --verbose
-```
-
-## 输出文件说明
-
-每个 PPT 会在 `output_notes/<文件名>/` 下生成：
-
-```text
-output_notes/
-  文件名A/
-    raw_text.md
-    cleaned_slides.json
-    images/
-      slide_001_img_01.png
-      slide_003_img_01.png
-    note.md
-    meta.json
-    process.log
-```
-
-- `raw_text.md`：按页保存原始提取文本
-- `cleaned_slides.json`：结构化后的每页文本与图片路径
-- `images/`：导出的图片资源
-- `note.md`：最终学习笔记（含相对路径图片引用 `images/...`）
-- `meta.json`：处理元信息（页数、图片数、状态、错误等）
-- `process.log`：单文件处理日志
-
-## 简单测试样例说明
-
-1. 在 `input_ppt/` 放入一个简单课件 `demo.pptx`（至少 2 页，其中 1 页带图片）
-2. 运行：
+### CLI 用法（保留）
 
 ```bash
 python main.py --input ./input_ppt --output ./output_notes --overwrite
 ```
 
-3. 检查：
-   - `output_notes/demo/raw_text.md` 是否按页有文本
-   - `output_notes/demo/images/` 是否导出图片
-   - `output_notes/demo/note.md` 是否包含 `images/...` 图片引用
+## Web 页面功能说明
+
+页面包含：
+
+1. 顶部标题与简介
+2. 左侧输入区
+   - `.pptx` 多文件上传
+   - API Key（密码输入）
+   - Base URL
+   - Model
+   - 输出目录
+   - 开始处理按钮
+3. 右侧输出区
+   - 处理摘要
+   - 处理日志
+   - 文件结果总览表
+   - 按文件查看详情
+   - 原始文本预览
+   - 图片预览
+   - Markdown 笔记预览
+   - `note.md` 下载
+
+## 输出目录示例
+
+```text
+output_notes_web/
+  demo/
+    raw_text.md
+    cleaned_slides.json
+    images/
+      slide_001_img_01.png
+    note.md
+    meta.json
+    process.log
+```
+
+## 简单测试样例
+
+1. 准备 `demo.pptx`（至少 2 页，含 1 页图片）
+2. 启动 `python app.py`
+3. 上传文件并处理
+4. 检查：
+   - 页面是否显示提取文本和图片
+   - 是否生成并可下载 `note.md`
+   - `output_notes_web/demo/` 是否包含中间产物
 
 ## 当前限制
 
-1. 第一版优先支持 `.pptx`
-2. `.ppt` 依赖 Windows + 本机安装 PowerPoint 才能稳定转换
-3. 第一版不做 OCR
-4. 第一版不保证完美还原复杂排版
-5. 第一版不做网页界面
+1. 第一版只支持 `.pptx`
+2. 第一版不做 OCR
+3. 第一版不做登录和数据库
+4. AI 未配置时只做原始提取并生成回退笔记
+5. 复杂排版不保证完美还原
 
 ## 后续规划
 
-1. 增加 OCR 支持（处理图片型文字页）
-2. 更细粒度版式解析（表格、公式、图文对应）
-3. 增加多笔记模板（速记版/考试版/讲义版）
-4. 增加批量评估与质量报告
-
-## 项目结构
-
-```text
-NCWUStudyHub/
-  main.py
-  ppt_loader.py
-  ppt_converter.py
-  extractor.py
-  image_exporter.py
-  ai_writer.py
-  formatter.py
-  utils.py
-  requirements.txt
-  .env.example
-  README.md
-```
+1. OCR 支持（图片文字识别）
+2. 更细粒度结构提取（表格、公式、图文映射）
+3. 多种学习笔记模板
+4. 批量质量评估报告

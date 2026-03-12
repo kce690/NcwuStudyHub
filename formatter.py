@@ -38,7 +38,7 @@ def build_raw_text_markdown(doc_title: str, slides: list[dict]) -> str:
     lines = [f"# {doc_title} - 原始提取文本", ""]
     for slide in slides:
         slide_no = slide["slide_number"]
-        title = slide.get("title", f"第{slide_no}页")
+        title = slide.get("title", f"Slide {slide_no}")
         lines.append(f"## Slide {slide_no}: {title}")
 
         text_blocks = slide.get("text_blocks", [])
@@ -70,38 +70,38 @@ def build_raw_text_markdown(doc_title: str, slides: list[dict]) -> str:
 
 
 def build_ai_source_markdown(doc_title: str, slides: list[dict]) -> str:
-    lines = [f"# PPT 提取内容：{doc_title}", ""]
+    lines = [f"# PPT 提取内容: {doc_title}", ""]
     for slide in slides:
         slide_no = slide["slide_number"]
         lines.append(f"## Slide {slide_no}")
-        lines.append(f"- 标题：{slide.get('title', f'第{slide_no}页')}")
+        lines.append(f"- 标题: {slide.get('title', f'Slide {slide_no}')}")
 
         text_blocks = slide.get("text_blocks", [])
         if text_blocks:
-            lines.append("- 文本：")
+            lines.append("- 文本:")
             for block in text_blocks:
                 lines.append(f"  - {block}")
         else:
-            lines.append("- 文本：无")
+            lines.append("- 文本: 无")
 
         bullet_points = slide.get("bullet_points", [])
         if bullet_points:
-            lines.append("- 项目符号：")
+            lines.append("- 项目符号:")
             for item in bullet_points:
                 lines.append(f"  - level={item.get('level', 0)}: {item.get('text', '')}")
         else:
-            lines.append("- 项目符号：无")
+            lines.append("- 项目符号: 无")
 
         image_paths = slide.get("image_paths", [])
         if image_paths:
-            lines.append("- 图片（请在详细笔记中保留这些链接）：")
+            lines.append("- 图片（请在详细笔记中保留这些链接）:")
             for img in image_paths:
                 lines.append(f"  - ![]({img})")
         else:
-            lines.append("- 图片：无")
+            lines.append("- 图片: 无")
 
         if not text_blocks and image_paths:
-            lines.append("- 备注：该页主要为图片内容")
+            lines.append("- 备注: 该页主要为图片内容")
 
         lines.append("")
     return "\n".join(lines).strip()
@@ -116,8 +116,8 @@ def _build_image_supplement(slides: list[dict]) -> str:
             continue
         has_any_image = True
         slide_no = slide["slide_number"]
-        title = slide.get("title", f"第{slide_no}页")
-        lines.append(f"### 第{slide_no}页：{title}")
+        title = slide.get("title", f"Slide {slide_no}")
+        lines.append(f"### 第{slide_no}页: {title}")
 
         text_blocks = slide.get("text_blocks", [])
         if text_blocks:
@@ -140,16 +140,16 @@ def _build_fallback_note(doc_title: str, slides: list[dict]) -> str:
 
     lines = [f"# {doc_title}", ""]
     lines.append("## 内容概览")
-    lines.append(f"- 总页数：{len(slides)}")
-    lines.append(f"- 图片页数量：{sum(1 for s in slides if s.get('image_paths'))}")
-    lines.append("- 说明：该版本为自动回退模板，建议检查原始提取内容。")
+    lines.append(f"- 总页数: {len(slides)}")
+    lines.append(f"- 图片页数量: {sum(1 for s in slides if s.get('image_paths'))}")
+    lines.append("- 说明: AI 未启用或生成失败，仅展示原始提取结果。")
     lines.append("")
 
     lines.append("## 详细笔记")
     for slide in slides:
         slide_no = slide["slide_number"]
-        title = slide.get("title", f"第{slide_no}页")
-        lines.append(f"### 第{slide_no}页：{title}")
+        title = slide.get("title", f"Slide {slide_no}")
+        lines.append(f"### 第{slide_no}页: {title}")
         text_blocks = slide.get("text_blocks", [])
         if text_blocks:
             for block in text_blocks:
@@ -180,15 +180,15 @@ def _build_fallback_note(doc_title: str, slides: list[dict]) -> str:
     lines.append("")
 
     lines.append("## 复习提纲")
-    lines.append("1. 先通读“内容概览”和“关键概念”。")
-    lines.append("2. 按“详细笔记”逐页复盘，重点关注定义、结论、步骤。")
-    lines.append("3. 对照“重要知识点”进行口头复述和默写。")
+    lines.append("1. 先通读内容概览和关键概念。")
+    lines.append("2. 按详细笔记逐页复盘定义、结论和步骤。")
+    lines.append("3. 对照重要知识点进行口头复述。")
     lines.append("")
 
     lines.append("## 自测题")
-    lines.append("1. 本文档中最核心的 3 个概念是什么？")
+    lines.append("1. 这份课件最核心的 3 个概念是什么？")
     lines.append("2. 任选一页，概述其关键知识点与应用场景。")
-    lines.append("3. 哪些内容在原文中不清晰，需要回看课件？")
+    lines.append("3. 哪些内容原文不清晰，需要回看课件？")
     return "\n".join(lines).strip() + "\n"
 
 

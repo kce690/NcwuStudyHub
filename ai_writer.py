@@ -42,7 +42,7 @@ class AIWriter:
     ) -> None:
         self.api_key = (api_key or "").strip()
         self.api_base = (api_base or "https://api.openai.com/v1").rstrip("/")
-        self.model = model
+        self.model = (model or "gpt-4o-mini").strip()
         self.timeout = timeout
         self.retries = retries
         self.retry_delay = retry_delay
@@ -54,7 +54,7 @@ class AIWriter:
 
     def generate_note(self, doc_title: str, extracted_content_md: str) -> tuple[str | None, str | None]:
         if not self.is_available():
-            return None, "未配置 AI（缺少 OPENAI_API_KEY 或 OPENAI_BASE_URL）"
+            return None, "AI 未启用：缺少 API Key 或 Base URL"
 
         endpoint = f"{self.api_base}/chat/completions"
         headers = {
@@ -81,17 +81,17 @@ class AIWriter:
             try:
                 response = requests.post(endpoint, headers=headers, json=payload, timeout=self.timeout)
                 if response.status_code >= 400:
-                    err_text = response.text[:500]
+                    err_text = response.text[:600]
                     raise RuntimeError(f"HTTP {response.status_code}: {err_text}")
                 data = response.json()
                 content = data["choices"][0]["message"]["content"].strip()
                 if not content:
-                    raise RuntimeError("AI 返回为空")
+                    raise RuntimeError("AI 返回内容为空")
                 return content, None
             except Exception as exc:  # noqa: BLE001
                 last_error = str(exc)
                 if self.logger:
-                    self.logger.warning("AI 调用失败（%s/%s）：%s", attempt, self.retries, last_error)
+                    self.logger.warning("AI 调用失败(%s/%s): %s", attempt, self.retries, last_error)
                 if attempt < self.retries:
                     time.sleep(self.retry_delay * attempt)
 
