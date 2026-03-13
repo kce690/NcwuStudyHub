@@ -7,44 +7,54 @@
     }
   };
 
-  const smoothScrollToNote = () => {
-    const note = document.getElementById("workspace-note");
-    if (!note) return;
-    note.scrollIntoView({ behavior: "smooth", block: "start" });
+  const scrollToReader = () => {
+    const target = document.getElementById("workspace-note");
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "start" });
+    target.scrollTop = 0;
   };
 
-  const bindStartScroll = () => {
-    const startBtn = document.getElementById("start-btn");
-    if (!startBtn || startBtn.dataset.ncwuBound === "1") return;
-
-    startBtn.dataset.ncwuBound = "1";
-    startBtn.addEventListener("click", () => {
-      setTimeout(smoothScrollToNote, 120);
-      setTimeout(smoothScrollToNote, 550);
+  const bindStart = () => {
+    const btn = document.getElementById("start-btn");
+    if (!btn || btn.dataset.ncwuBound === "1") return;
+    btn.dataset.ncwuBound = "1";
+    btn.addEventListener("click", () => {
+      setTimeout(scrollToReader, 240);
+      setTimeout(scrollToReader, 900);
     });
   };
 
-  const bindRealtimeNoteFollow = () => {
+  const bindReaderAnimation = () => {
     const note = document.getElementById("workspace-note");
     if (!note || note.dataset.ncwuObserve === "1") return;
-
     note.dataset.ncwuObserve = "1";
     const observer = new MutationObserver(() => {
-      note.classList.remove("ios-note-updated");
+      note.classList.remove("note-refresh");
       void note.offsetWidth;
-      note.classList.add("ios-note-updated");
-      note.scrollTo({ top: note.scrollHeight, behavior: "smooth" });
+      note.classList.add("note-refresh");
     });
     observer.observe(note, { childList: true, subtree: true, characterData: true });
   };
 
+  const watchScreenSwitch = () => {
+    const reading = document.getElementById("reading-screen");
+    if (!reading || reading.dataset.ncwuWatch === "1") return;
+    reading.dataset.ncwuWatch = "1";
+    const obs = new MutationObserver(() => {
+      const visible = reading.offsetParent !== null;
+      if (visible) setTimeout(scrollToReader, 120);
+    });
+    obs.observe(reading, { attributes: true, attributeFilter: ["style", "class"] });
+  };
+
   ready(() => {
-    bindStartScroll();
-    bindRealtimeNoteFollow();
-    // Gradio may rerender nodes, so keep rebinding lightweight listeners.
+    bindStart();
+    bindReaderAnimation();
+    watchScreenSwitch();
     setInterval(() => {
-      bindStartScroll();
-      bindRealtimeNoteFollow();
-    }, 1200);
+      bindStart();
+      bindReaderAnimation();
+      watchScreenSwitch();
+    }, 1500);
   });
 })();

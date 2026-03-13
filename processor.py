@@ -142,6 +142,7 @@ def process_single_pptx_stream(
         yield emit(f"[{src_file.name}] 正在提取文字与图片", 0.05)
         slides_raw, stats = extract_pptx_content(src_file, images_dir, file_logger)
         slides = normalize_slides(slides_raw)
+        key_images = pick_key_images(slides)
 
         meta["slide_count"] = stats["slide_count"]
         meta["image_count"] = stats["image_count"]
@@ -177,7 +178,12 @@ def process_single_pptx_stream(
         gallery_seen: set[str] = set()
         gallery_paths: list[str] = []
 
-        write_text(note_path, build_incremental_note(src_file.stem, blocks, 0, result["total_units"], finished=False))
+        write_text(
+            note_path,
+            build_incremental_note(
+                src_file.stem, blocks, 0, result["total_units"], key_images=key_images, finished=False
+            ),
+        )
         result["note_path"] = str(note_path.resolve())
         result["note_preview"] = note_path.read_text(encoding="utf-8")
 
@@ -209,16 +215,20 @@ def process_single_pptx_stream(
                     gallery_paths.append(abs_path)
             result["gallery_images"] = gallery_paths
 
-            partial_note = build_incremental_note(src_file.stem, blocks, idx, total_units, finished=False)
+            partial_note = build_incremental_note(
+                src_file.stem, blocks, idx, total_units, key_images=key_images, finished=False
+            )
             write_text(note_path, partial_note)
             result["note_preview"] = partial_note
 
             yield emit(f"[{src_file.name}] 已完成 {idx}/{total_units} 页", idx / total_units)
 
-        final_note = build_incremental_note(src_file.stem, blocks, total_units, total_units, finished=True)
+        final_note = build_incremental_note(
+            src_file.stem, blocks, total_units, total_units, key_images=key_images, finished=True
+        )
         write_text(note_path, final_note)
         result["note_preview"] = final_note
-        result["key_images"] = pick_key_images(slides)
+        result["key_images"] = key_images
 
         result["success"] = True
         meta["success"] = True
@@ -343,42 +353,56 @@ def process_ppt_files_stream(
         src_file = Path(str(source_path))
         original_name = src_file.name if source_path else f"file_{idx + 1}"
 
-        if not source_path:
-            results[idx]["error"] = "上传文件路径无效"
-            err_event = emit(f"[{idx + 1}/{total}] 文件路径无效，已跳过", (idx + 1) / total, idx, finished=False)
+        try:
+            if not source_path:
+                results[idx]["error"] = "上传文件路径无效"
+                err_event = emit(f"[{idx + 1}/{total}] 文件路径无效，已跳过", (idx + 1) / total, idx, finished=False)
+                yield err_event
+                continue
+
+            if src_file.suffix.lower() != ".pptx":
+                results[idx]["error"] = "仅支持 .pptx 文件"
+                err_event = emit(f"[{idx + 1}/{total}] {original_name} 格式不支持，已跳过", (idx + 1) / total, idx, finished=False)
+                yield err_event
+                continue
+
+            copied_name = f"{idx + 1:03d}_{safe_name(src_file.name)}"
+            copied_path = session_dir / copied_name
+            shutil.copy2(src_file, copied_path)
+
+            base_stem = safe_name(src_file.stem)
+            used_stems[base_stem] = used_stems.get(base_stem, 0) + 1
+            output_stem = base_stem if used_stems[base_stem] == 1 else f"{base_stem}_{used_stems[base_stem]}"
+
+            for single_event in process_single_pptx_stream(
+                src_file=copied_path,
+                output_root=output_root,
+                overwrite=overwrite,
+                ai_writer=writer,
+                mode=mode,
+                output_stem=output_stem,
+                status_callback=None,
+            ):
+                item_result = single_event["result"]
+                item_result["file_name"] = original_name
+                results[idx] = item_result
+
+                overall_progress = (idx + single_event["file_progress"]) / total
+                status_text = f"[{idx + 1}/{total}] {single_event['status']}"
+                yield emit(status_text, overall_progress, idx, finished=False)
+        except Exception as exc:  # noqa: BLE001
+            item = _empty_result(original_name)
+            item["source_file"] = str(src_file)
+            item["mode"] = mode
+            item["error"] = f"{type(exc).__name__}: {exc}"
+            results[idx] = item
+            err_event = emit(
+                f"[{idx + 1}/{total}] {original_name} 处理失败：{item['error']}",
+                (idx + 1) / total,
+                idx,
+                finished=False,
+            )
             yield err_event
-            continue
-
-        if src_file.suffix.lower() != ".pptx":
-            results[idx]["error"] = "仅支持 .pptx 文件"
-            err_event = emit(f"[{idx + 1}/{total}] {original_name} 格式不支持，已跳过", (idx + 1) / total, idx, finished=False)
-            yield err_event
-            continue
-
-        copied_name = f"{idx + 1:03d}_{safe_name(src_file.name)}"
-        copied_path = session_dir / copied_name
-        shutil.copy2(src_file, copied_path)
-
-        base_stem = safe_name(src_file.stem)
-        used_stems[base_stem] = used_stems.get(base_stem, 0) + 1
-        output_stem = base_stem if used_stems[base_stem] == 1 else f"{base_stem}_{used_stems[base_stem]}"
-
-        for single_event in process_single_pptx_stream(
-            src_file=copied_path,
-            output_root=output_root,
-            overwrite=overwrite,
-            ai_writer=writer,
-            mode=mode,
-            output_stem=output_stem,
-            status_callback=None,
-        ):
-            item_result = single_event["result"]
-            item_result["file_name"] = original_name
-            results[idx] = item_result
-
-            overall_progress = (idx + single_event["file_progress"]) / total
-            status_text = f"[{idx + 1}/{total}] {single_event['status']}"
-            yield emit(status_text, overall_progress, idx, finished=False)
 
     final_status = f"处理完成：成功 {sum(1 for r in results if r.get('success'))}，失败 {sum(1 for r in results if r.get('error'))}"
     final_event = emit(final_status, 1.0, max(total - 1, 0), finished=True)

@@ -414,6 +414,12 @@ def build_slide_basic_block(slide: dict) -> str:
     bullets = slide.get("bullet_points", []) or []
     images = slide.get("image_paths", []) or []
 
+    is_visual_first = bool(images) and not (text_blocks or bullets)
+    if is_visual_first:
+        for img in images[:2]:
+            lines.append(f"![第{slide_no}页图示]({img})")
+        lines.append("- 本页以图示内容为主，建议先看图再看说明。")
+
     if text_blocks:
         for text in text_blocks[:4]:
             lines.append(f"- {text}")
@@ -424,14 +430,13 @@ def build_slide_basic_block(slide: dict) -> str:
             indent = "  " * min(int(item.get("level", 0) or 0), 2)
             lines.append(f"{indent}- {item.get('text', '').strip()}")
 
-    if not text_blocks and not bullets:
-        if images:
-            lines.append("- 本页以图示内容为主。")
-        else:
-            lines.append("- 原文不清晰。")
+    if not text_blocks and not bullets and not images:
+        lines.append("- 原文不清晰。")
 
-    for img in images[:2]:
-        lines.append(f"![第{slide_no}页图示]({img})")
+    if images and not is_visual_first:
+        lines.append("- 配图：")
+        for img in images[:2]:
+            lines.append(f"![第{slide_no}页图示]({img})")
 
     return "\n".join(lines).strip()
 
@@ -441,9 +446,19 @@ def build_incremental_note(
     blocks: list[str],
     processed_count: int,
     total_count: int,
+    key_images: list[dict] | None = None,
     finished: bool = False,
 ) -> str:
-    lines = [f"# {doc_title}", "", "## 内容概览", f"- 已完成：{processed_count}/{total_count}", "", "## 详细笔记", ""]
+    lines = [f"# {doc_title}", "", "## 内容概览", f"- 已完成：{processed_count}/{total_count}", ""]
+
+    if key_images:
+        lines.extend(["## 核心图示", ""])
+        for item in key_images[:6]:
+            lines.append(f"### 第{item.get('slide_number', '?')}页图示")
+            lines.append(f"![核心图示]({item.get('path', '')})")
+            lines.append(f"> {item.get('caption', '关键图示')}")
+            lines.append("")
+    lines.extend(["## 详细笔记", ""])
 
     if blocks:
         for block in blocks:
