@@ -9,7 +9,7 @@ import gradio as gr
 from dotenv import load_dotenv
 
 from ai_writer import chat_with_note
-from processor import process_ppt_files
+from processor import process_ppt_files_stream
 
 
 def _patch_gradio_local_startup_request() -> None:
@@ -55,8 +55,10 @@ def _load_ios_js() -> str:
 def _build_table_rows(results: list[dict]) -> list[list[Any]]:
     rows: list[list[Any]] = []
     for item in results:
-        status = "成功" if item.get("success") else "失败"
+        status = "成功" if item.get("success") else "失败" if item.get("error") else "处理中"
         ai_status = "已启用" if item.get("ai_used") else "未启用/降级"
+        unit_done = int(item.get("processed_units", 0) or 0)
+        unit_total = int(item.get("total_units", 0) or 0)
         rows.append(
             [
                 item.get("file_name", ""),
@@ -64,6 +66,7 @@ def _build_table_rows(results: list[dict]) -> list[list[Any]]:
                 status,
                 item.get("slide_count", 0),
                 item.get("image_count", 0),
+                f"{unit_done}/{unit_total}" if unit_total else "-",
                 ai_status,
                 item.get("output_dir", ""),
                 item.get("error") or item.get("warning") or "",
@@ -89,10 +92,10 @@ def _render_selected_file(choice: str | None, state: dict):
     results = state.get("results", [])
     idx = _get_selected_index(choice, state)
     if idx < 0 or idx >= len(results):
-        return "暂无结果", "", [], "", None
+        return "暂无结果", [], "（正在等待生成内容）", None
 
     item = results[idx]
-    status_line = "成功" if item.get("success") else "失败"
+    status_line = "成功" if item.get("success") else "失败" if item.get("error") else "处理中"
     ai_line = "已启用" if item.get("ai_used") else "未启用或已降级"
     info = [
         f"### 文件：{item.get('file_name', '')}",
@@ -100,6 +103,7 @@ def _render_selected_file(choice: str | None, state: dict):
         f"- 状态：{status_line}",
         f"- 页数：{item.get('slide_count', 0)}",
         f"- 图片数：{item.get('image_count', 0)}",
+        f"- 已处理：{item.get('processed_units', 0)}/{item.get('total_units', 0)}",
         f"- AI 增强：{ai_line}",
         f"- 输出目录：`{item.get('output_dir', '')}`",
     ]
@@ -108,15 +112,27 @@ def _render_selected_file(choice: str | None, state: dict):
     if item.get("error"):
         info.append(f"- 错误：{item['error']}")
 
-    raw_preview = item.get("raw_text_preview", "") or "（无原始文本）"
-    note_preview = item.get("note_preview", "") or "（未生成笔记）"
+    note_preview = item.get("note_preview", "") or "（正在生成内容）"
     gallery_items = item.get("gallery_images", []) or []
     note_file = item.get("note_path") or None
-    return "\n".join(info), raw_preview, gallery_items, note_preview, note_file
+    if note_file and not Path(str(note_file)).exists():
+        note_file = None
+    return "\n".join(info), gallery_items, note_preview, note_file
 
 
 def _history_to_pairs(history_messages: list[tuple[str, str]] | None) -> list[tuple[str, str]]:
     return (history_messages or [])[-6:]
+
+
+def _build_status_md(status_text: str, summary: dict) -> str:
+    return (
+        "### 处理状态\n"
+        f"- 当前：{status_text}\n"
+        f"- 模式：`{summary.get('mode', 'basic')}`\n"
+        f"- 成功：{summary.get('success_count', 0)}\n"
+        f"- 失败：{summary.get('fail_count', 0)}\n"
+        f"- 输出目录：`{summary.get('output_dir', '')}`"
+    )
 
 
 def run_processing(
@@ -128,37 +144,37 @@ def run_processing(
     output_dir: str,
     progress=gr.Progress(track_tqdm=False),
 ):
+    progress_fn = progress if callable(progress) else None
+
+    def update_progress(fraction: float, desc: str) -> None:
+        if progress_fn:
+            progress_fn(fraction, desc=desc)
+
     if not uploaded_files:
+        gr.Warning("请先上传至少一个 .pptx 文件，再点击“开始处理”。")
         empty_state = {"results": [], "choices": []}
-        return (
-            "### 处理摘要\n- 尚未开始",
+        yield (
+            "### 处理状态\n- 尚未开始",
             "请先上传至少一个 .pptx 文件。",
             [],
             gr.update(choices=[], value=None),
             "暂无结果",
-            "",
             [],
-            "",
+            "（正在等待生成内容）",
             None,
             empty_state,
             [],
-            gr.update(visible=True),
-            gr.update(visible=False),
         )
-
-    total = len(uploaded_files)
-    update_counter = {"count": 0}
-
-    def on_status(msg: str) -> None:
-        update_counter["count"] += 1
-        fraction = min(update_counter["count"] / (total * 7), 0.98)
-        progress(fraction, desc=msg)
+        return
 
     mode_text = (mode or "").strip()
     mode_value = "ai" if "AI" in mode_text.upper() else "basic"
 
+    gr.Info(f"开始处理 {len(uploaded_files)} 个文件，结果将实时展示。")
+    latest_state = {"results": [], "choices": []}
+
     try:
-        summary = process_ppt_files(
+        for event in process_ppt_files_stream(
             uploaded_files=uploaded_files,
             mode=mode_value,
             api_key=api_key.strip() or None,
@@ -166,67 +182,61 @@ def run_processing(
             model=model.strip() or None,
             output_dir=output_dir.strip() or "./output_notes_web",
             overwrite=True,
-            status_callback=on_status,
-        )
+            status_callback=None,
+        ):
+            summary = event["summary"]
+            status_text = event.get("status_text", "处理中")
+            progress_value = float(event.get("progress", 0.0) or 0.0)
+            update_progress(progress_value, desc=status_text)
+
+            results = summary.get("results", [])
+            rows = _build_table_rows(results)
+            choices = [_choice_label(i, item.get("file_name", f"file_{i+1}")) for i, item in enumerate(results)]
+            active_idx = int(event.get("active_index", 0) or 0)
+            default_choice = choices[active_idx] if 0 <= active_idx < len(choices) else (choices[0] if choices else None)
+            latest_state = {"results": results, "choices": choices}
+
+            selected_info, gallery_items, note_preview, note_file = _render_selected_file(default_choice, latest_state)
+            status_md = _build_status_md(status_text, summary)
+
+            yield (
+                status_md,
+                summary.get("logs", ""),
+                rows,
+                gr.update(choices=choices, value=default_choice),
+                selected_info,
+                gallery_items,
+                note_preview,
+                note_file,
+                latest_state,
+                [],
+            )
+
+        update_progress(1.0, desc="处理完成")
     except Exception as exc:  # noqa: BLE001
-        progress(1.0, desc="处理失败")
+        update_progress(1.0, desc="处理失败")
         error_text = f"{type(exc).__name__}: {exc}"
-        failed_state = {"results": [], "choices": []}
-        return (
-            "### 处理摘要\n- 状态：失败",
+        gr.Error(f"生成失败：{error_text}")
+        failed_state = latest_state if latest_state.get("results") else {"results": [], "choices": []}
+        yield (
+            "### 处理状态\n- 状态：失败",
             f"生成过程异常：{error_text}",
-            [],
-            gr.update(choices=[], value=None),
+            _build_table_rows(failed_state.get("results", [])),
+            gr.update(choices=failed_state.get("choices", []), value=None),
             "暂无结果",
-            "",
             [],
-            "",
+            "（生成失败）",
             None,
             failed_state,
             [],
-            gr.update(visible=True),
-            gr.update(visible=False),
         )
-    progress(1.0, desc="处理完成")
-
-    results = summary["results"]
-    rows = _build_table_rows(results)
-    choices = [_choice_label(i, item.get("file_name", f"file_{i+1}")) for i, item in enumerate(results)]
-    state = {"results": results, "choices": choices}
-    default_choice = choices[0] if choices else None
-    selected_info, raw_preview, gallery_items, note_preview, note_file = _render_selected_file(default_choice, state)
-
-    status_md = (
-        f"### 处理摘要\n"
-        f"- 模式：`{summary.get('mode', mode_value)}`\n"
-        f"- 成功：{summary['success_count']}\n"
-        f"- 失败：{summary['fail_count']}\n"
-        f"- 输出目录：`{summary['output_dir']}`"
-    )
-    return (
-        status_md,
-        summary["logs"],
-        rows,
-        gr.update(choices=choices, value=default_choice),
-        selected_info,
-        raw_preview,
-        gallery_items,
-        note_preview,
-        note_file,
-        state,
-        [],
-        gr.update(visible=False),
-        gr.update(visible=True),
-    )
 
 
 def on_select_file(choice: str, state: dict):
-    selected_info, raw_preview, gallery_items, note_preview, note_file = _render_selected_file(
+    selected_info, gallery_items, note_preview, note_file = _render_selected_file(
         choice, state or {"results": [], "choices": []}
     )
-    return selected_info, raw_preview, gallery_items, note_preview, note_file, []
-
-
+    return selected_info, gallery_items, note_preview, note_file, []
 
 
 def on_mode_change(mode: str):
@@ -234,22 +244,19 @@ def on_mode_change(mode: str):
     return gr.update(visible=show_ai)
 
 
-def back_to_upload():
+def clear_results():
     empty_state = {"results": [], "choices": []}
     return (
-        "### 处理摘要\n- 尚未开始",
+        "### 处理状态\n- 尚未开始",
         "",
         [],
         gr.update(choices=[], value=None),
         "暂无结果",
-        "",
         [],
-        "",
+        "（正在等待生成内容）",
         None,
         empty_state,
         [],
-        gr.update(visible=True),
-        gr.update(visible=False),
     )
 
 
@@ -274,12 +281,15 @@ def chat_submit(
     idx = _get_selected_index(selected_choice, state or {"results": [], "choices": []})
     results = (state or {}).get("results", [])
     if idx < 0 or idx >= len(results):
-        history.append((question, "请先上传并处理 PPT，再进行提问。"))
+        history.append((question, "请先开始处理 PPT，生成笔记后再提问。"))
         return history, None
 
     item = results[idx]
     current_note = item.get("note_preview", "")
     current_raw = item.get("raw_text_preview", "")
+    if not (current_note or "").strip():
+        history.append((question, "当前还没有可用笔记内容，请先等待至少一页生成完成。"))
+        return history, None
 
     reply, err = chat_with_note(
         user_message=question,
@@ -305,47 +315,49 @@ def build_ui() -> gr.Blocks:
         gr.HTML(f"<script>{_load_ios_js()}</script>")
 
         with gr.Column(elem_id="app-shell"):
-            with gr.Column(elem_id="upload-screen", elem_classes=["ios-glass"], visible=True) as upload_screen:
-                gr.Markdown("## NCWUStudyHub\n### 上传 PPT，开始你的学习会话", elem_id="hero-title")
-                upload_files = gr.File(
-                    label="上传 .pptx 文件（可多选）",
-                    file_count="multiple",
-                    file_types=[".pptx"],
-                    type="filepath",
-                )
-                mode_radio = gr.Radio(label="处理模式", choices=["普通模式", "AI 增强模式"], value="普通模式")
-                with gr.Column(visible=False) as ai_config_wrap:
-                    api_key = gr.Textbox(label="DeepSeek API Key", type="password", placeholder="AI 增强模式必填")
-                    api_base = gr.Textbox(label="DeepSeek Base URL", value=default_api_base)
-                    model = gr.Textbox(label="DeepSeek Model", value=default_model)
-                output_dir = gr.Textbox(label="输出目录", value="./output_notes_web")
-                start_btn = gr.Button("生成笔记", variant="primary", size="lg", elem_id="start-btn")
+            gr.Markdown("## NCWUStudyHub\n### 上传 PPT，实时生成学习笔记", elem_id="hero-title")
+            with gr.Row():
+                with gr.Column(scale=3, elem_classes=["ios-glass"], elem_id="control-panel"):
+                    upload_files = gr.File(
+                        label="上传 .pptx 文件（可多选）",
+                        file_count="multiple",
+                        file_types=[".pptx"],
+                        type="filepath",
+                    )
+                    mode_radio = gr.Radio(label="处理模式", choices=["普通模式", "AI 增强模式"], value="普通模式")
+                    with gr.Column(visible=False) as ai_config_wrap:
+                        api_key = gr.Textbox(label="DeepSeek API Key", type="password", placeholder="AI 增强模式必填")
+                        api_base = gr.Textbox(label="DeepSeek Base URL", value=default_api_base)
+                        model = gr.Textbox(label="DeepSeek Model", value=default_model)
+                    output_dir = gr.Textbox(label="输出目录", value="./output_notes_web")
+                    start_btn = gr.Button("开始处理", variant="primary", size="lg", elem_id="start-btn")
+                    clear_result_btn = gr.Button("清空结果", variant="secondary")
 
-            with gr.Column(elem_id="chat-screen", visible=False) as chat_screen:
-                with gr.Row():
-                    back_btn = gr.Button("← 返回上传页", variant="secondary")
-                with gr.Row():
-                    with gr.Column(scale=8, elem_classes=["ios-glass"]):
-                        status_md = gr.Markdown("### 处理摘要\n- 尚未开始", elem_id="status-pill")
-                        file_picker = gr.Dropdown(label="文件", choices=[], value=None)
-                        selected_info = gr.Markdown("暂无结果")
-                        note_preview = gr.Markdown(elem_id="workspace-note")
-                    with gr.Column(scale=4, elem_classes=["ios-glass"]):
-                        logs_box = gr.Textbox(label="处理日志", lines=12)
-                        result_table = gr.Dataframe(
-                            headers=["文件名", "模式", "状态", "页数", "图片数", "AI", "输出目录", "信息"],
-                            datatype=["str", "str", "str", "number", "number", "str", "str", "str"],
-                            interactive=False,
-                            label="结果总览",
-                        )
-                        raw_preview = gr.Markdown(label="原始提取预览")
-                        image_gallery = gr.Gallery(label="图片预览", columns=2, height=220, type="filepath")
-                        note_download = gr.File(label="下载 note.md")
-                with gr.Column(elem_classes=["ios-glass"]):
+                with gr.Column(scale=6, elem_classes=["ios-glass"], elem_id="note-panel"):
+                    status_md = gr.Markdown("### 处理状态\n- 尚未开始", elem_id="status-pill")
+                    file_picker = gr.Dropdown(label="文件", choices=[], value=None)
+                    selected_info = gr.Markdown("暂无结果")
+                    note_preview = gr.Markdown("（正在等待生成内容）", elem_id="workspace-note")
+                    image_gallery = gr.Gallery(label="当前页相关图片", columns=2, height=260, type="filepath")
+                    note_download = gr.File(label="下载 note.md")
+
+                with gr.Column(scale=4, elem_classes=["ios-glass"], elem_id="assistant-panel"):
+                    logs_box = gr.Textbox(label="处理日志", lines=9)
+                    result_table = gr.Dataframe(
+                        headers=["文件名", "模式", "状态", "页数", "图片数", "进度", "AI", "输出目录", "信息"],
+                        datatype=["str", "str", "str", "number", "number", "str", "str", "str", "str"],
+                        interactive=False,
+                        label="结果总览",
+                    )
                     chatbot = gr.Chatbot(label="学习助手", elem_id="chat-window")
                     chat_input = gr.Dropdown(
                         label="",
-                        choices=["这份笔记的核心知识点是什么？", "请按考试重点给我3分钟速记版", "帮我按章节生成复习清单", "请解释最难的三个概念并举例"],
+                        choices=[
+                            "这份笔记的核心知识点是什么？",
+                            "请按考试重点给我3分钟速记版",
+                            "帮我按章节生成复习清单",
+                            "请解释最难的三个概念并举例",
+                        ],
                         value=None,
                         allow_custom_value=True,
                         elem_id="chat-question",
@@ -354,11 +366,7 @@ def build_ui() -> gr.Blocks:
                         send_btn = gr.Button("发送", variant="primary")
                         clear_chat_btn = gr.Button("清空对话")
 
-        mode_radio.change(
-            fn=on_mode_change,
-            inputs=[mode_radio],
-            outputs=[ai_config_wrap],
-        )
+        mode_radio.change(fn=on_mode_change, inputs=[mode_radio], outputs=[ai_config_wrap])
 
         start_btn.click(
             fn=run_processing,
@@ -369,39 +377,33 @@ def build_ui() -> gr.Blocks:
                 result_table,
                 file_picker,
                 selected_info,
-                raw_preview,
                 image_gallery,
                 note_preview,
                 note_download,
                 state,
                 chatbot,
-                upload_screen,
-                chat_screen,
             ],
         )
 
         file_picker.change(
             fn=on_select_file,
             inputs=[file_picker, state],
-            outputs=[selected_info, raw_preview, image_gallery, note_preview, note_download, chatbot],
+            outputs=[selected_info, image_gallery, note_preview, note_download, chatbot],
         )
 
-        back_btn.click(
-            fn=back_to_upload,
+        clear_result_btn.click(
+            fn=clear_results,
             outputs=[
                 status_md,
                 logs_box,
                 result_table,
                 file_picker,
                 selected_info,
-                raw_preview,
                 image_gallery,
                 note_preview,
                 note_download,
                 state,
                 chatbot,
-                upload_screen,
-                chat_screen,
             ],
         )
 
@@ -418,4 +420,4 @@ def build_ui() -> gr.Blocks:
 if __name__ == "__main__":
     _patch_gradio_local_startup_request()
     app = build_ui()
-    app.launch(server_name="127.0.0.1", server_port=7860, share=False)
+    app.launch(server_name="127.0.0.1", server_port=7860, share=False, show_error=True)

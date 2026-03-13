@@ -120,6 +120,44 @@ class AIWriter:
         ]
         return self._chat_completion(messages=messages, temperature=0.2)
 
+    def generate_slide_note(self, doc_title: str, slide: dict) -> tuple[str | None, str | None]:
+        slide_no = slide.get("slide_number", "?")
+        title = (slide.get("title") or "").strip() or f"Slide {slide_no}"
+        text_blocks = slide.get("text_blocks", []) or []
+        bullets = slide.get("bullet_points", []) or []
+        images = slide.get("image_paths", []) or []
+
+        lines = [f"- 文档: {doc_title}", f"- 页码: {slide_no}", f"- 标题: {title}"]
+        if text_blocks:
+            lines.append("- 文本:")
+            for item in text_blocks[:6]:
+                lines.append(f"  - {item}")
+        if bullets:
+            lines.append("- 项目符号:")
+            for item in bullets[:10]:
+                lines.append(f"  - level={int(item.get('level', 0) or 0)}: {item.get('text', '')}")
+        if images:
+            lines.append("- 图片路径（仅在强相关时插入）:")
+            for img in images[:3]:
+                lines.append(f"  - {img}")
+
+        user_prompt = (
+            "请仅基于以下单页PPT信息，生成这一页的学习笔记块。\n"
+            "要求：\n"
+            "1) 输出中文 Markdown。\n"
+            "2) 第一行必须是三级标题，格式：### 第X页：标题。\n"
+            "3) 用 3-8 条要点总结该页。\n"
+            "4) 如果是图示页，先简要说明图示含义，再按需插入对应图片 Markdown。\n"
+            "5) 不要输出与本页无关内容，不要补全未知信息。\n\n"
+            f"{chr(10).join(lines)}"
+        )
+
+        messages = [
+            {"role": "system", "content": "你是严谨的课程笔记助手，只能基于给定页面内容回答。"},
+            {"role": "user", "content": user_prompt},
+        ]
+        return self._chat_completion(messages=messages, temperature=0.2)
+
 
 def chat_with_note(
     user_message: str,

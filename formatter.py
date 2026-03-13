@@ -403,3 +403,69 @@ def build_final_note(doc_title: str, slides: list[dict], ai_note: str | None) ->
             note += "\n\n" + "\n".join(mixed_preview)
 
     return _latexify_text(note.strip()) + "\n"
+
+
+def build_slide_basic_block(slide: dict) -> str:
+    slide_no = slide.get("slide_number", "?")
+    title = _normalize_line(slide.get("title", "")) or f"Slide {slide_no}"
+    lines = [f"### 第{slide_no}页：{title}"]
+
+    text_blocks = slide.get("text_blocks", []) or []
+    bullets = slide.get("bullet_points", []) or []
+    images = slide.get("image_paths", []) or []
+
+    if text_blocks:
+        for text in text_blocks[:4]:
+            lines.append(f"- {text}")
+
+    if bullets:
+        lines.append("- 关键要点：")
+        for item in bullets[:8]:
+            indent = "  " * min(int(item.get("level", 0) or 0), 2)
+            lines.append(f"{indent}- {item.get('text', '').strip()}")
+
+    if not text_blocks and not bullets:
+        if images:
+            lines.append("- 本页以图示内容为主。")
+        else:
+            lines.append("- 原文不清晰。")
+
+    for img in images[:2]:
+        lines.append(f"![第{slide_no}页图示]({img})")
+
+    return "\n".join(lines).strip()
+
+
+def build_incremental_note(
+    doc_title: str,
+    blocks: list[str],
+    processed_count: int,
+    total_count: int,
+    finished: bool = False,
+) -> str:
+    lines = [f"# {doc_title}", "", "## 内容概览", f"- 已完成：{processed_count}/{total_count}", "", "## 详细笔记", ""]
+
+    if blocks:
+        for block in blocks:
+            lines.append(block.strip())
+            lines.append("")
+    else:
+        lines.append("（正在生成中）")
+        lines.append("")
+
+    if finished:
+        lines.extend(
+            [
+                "## 复习提纲",
+                "1. 先通读每页主结论与定义。",
+                "2. 按章节回顾关键公式与图示。",
+                "3. 用右侧问答区做快速自测。",
+                "",
+                "## 自测题",
+                "1. 本资料最核心的3个概念是什么？",
+                "2. 哪两页最需要结合图示来理解？为什么？",
+                "3. 你会如何用3分钟复述本次主题？",
+            ]
+        )
+
+    return _latexify_text("\n".join(lines).strip()) + "\n"

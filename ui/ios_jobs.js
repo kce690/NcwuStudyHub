@@ -1,49 +1,50 @@
 (() => {
   const ready = (fn) => {
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', fn, { once: true });
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", fn, { once: true });
     } else {
       fn();
     }
   };
 
-  const animateScreen = (el) => {
-    if (!el) return;
-    el.classList.remove('ios-screen-enter');
-    // force reflow for replay
-    void el.offsetWidth;
-    el.classList.add('ios-screen-enter');
+  const smoothScrollToNote = () => {
+    const note = document.getElementById("workspace-note");
+    if (!note) return;
+    note.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const bindStartScroll = () => {
+    const startBtn = document.getElementById("start-btn");
+    if (!startBtn || startBtn.dataset.ncwuBound === "1") return;
+
+    startBtn.dataset.ncwuBound = "1";
+    startBtn.addEventListener("click", () => {
+      setTimeout(smoothScrollToNote, 120);
+      setTimeout(smoothScrollToNote, 550);
+    });
+  };
+
+  const bindRealtimeNoteFollow = () => {
+    const note = document.getElementById("workspace-note");
+    if (!note || note.dataset.ncwuObserve === "1") return;
+
+    note.dataset.ncwuObserve = "1";
+    const observer = new MutationObserver(() => {
+      note.classList.remove("ios-note-updated");
+      void note.offsetWidth;
+      note.classList.add("ios-note-updated");
+      note.scrollTo({ top: note.scrollHeight, behavior: "smooth" });
+    });
+    observer.observe(note, { childList: true, subtree: true, characterData: true });
   };
 
   ready(() => {
-    const upload = document.getElementById('upload-screen');
-    const chat = document.getElementById('chat-screen');
-
-    const obs = new MutationObserver(() => {
-      const uploadVisible = upload && upload.offsetParent !== null;
-      const chatVisible = chat && chat.offsetParent !== null;
-      if (uploadVisible) animateScreen(upload);
-      if (chatVisible) animateScreen(chat);
-      document.body.classList.toggle('ios-in-chat', Boolean(chatVisible));
-    });
-
-    if (upload) obs.observe(upload, { attributes: true, attributeFilter: ['style', 'class'] });
-    if (chat) obs.observe(chat, { attributes: true, attributeFilter: ['style', 'class'] });
-
-    [upload, chat].forEach((el) => {
-      if (!el) return;
-      el.querySelectorAll('button').forEach((btn) => {
-        btn.addEventListener('pointerdown', () => btn.classList.add('ios-press'));
-        btn.addEventListener('pointerup', () => btn.classList.remove('ios-press'));
-        btn.addEventListener('pointerleave', () => btn.classList.remove('ios-press'));
-      });
-
-      el.querySelectorAll('textarea, input').forEach((input) => {
-        input.addEventListener('focus', () => input.classList.add('ios-focus'));
-        input.addEventListener('blur', () => input.classList.remove('ios-focus'));
-      });
-    });
-
-    if (upload && upload.offsetParent !== null) animateScreen(upload);
+    bindStartScroll();
+    bindRealtimeNoteFollow();
+    // Gradio may rerender nodes, so keep rebinding lightweight listeners.
+    setInterval(() => {
+      bindStartScroll();
+      bindRealtimeNoteFollow();
+    }, 1200);
   });
 })();
