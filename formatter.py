@@ -1,14 +1,68 @@
 from __future__ import annotations
 
 from collections import Counter
+import re
 from typing import Iterable
 
 REQUIRED_SECTIONS = ["内容概览", "详细笔记", "关键概念", "重要知识点", "复习提纲", "自测题"]
 VISUAL_HINTS = ("图", "示意", "结构", "流程", "架构", "曲线", "实验", "结果", "模型")
+LATEX_SYMBOL_MAP: tuple[tuple[str, str], ...] = (
+    ("≤", r"$\leq$"),
+    ("≥", r"$\geq$"),
+    ("≠", r"$\neq$"),
+    ("≈", r"$\approx$"),
+    ("±", r"$\pm$"),
+    ("×", r"$\times$"),
+    ("÷", r"$\div$"),
+    ("→", r"$\to$"),
+    ("↔", r"$\leftrightarrow$"),
+    ("∞", r"$\infty$"),
+    ("∈", r"$\in$"),
+    ("∉", r"$\notin$"),
+    ("⊂", r"$\subset$"),
+    ("⊆", r"$\subseteq$"),
+    ("∪", r"$\cup$"),
+    ("∩", r"$\cap$"),
+    ("∑", r"$\sum$"),
+    ("∏", r"$\prod$"),
+    ("∫", r"$\int$"),
+    ("√", r"$\sqrt{}$"),
+    ("α", r"$\alpha$"),
+    ("β", r"$\beta$"),
+    ("γ", r"$\gamma$"),
+    ("δ", r"$\delta$"),
+    ("θ", r"$\theta$"),
+    ("λ", r"$\lambda$"),
+    ("μ", r"$\mu$"),
+    ("π", r"$\pi$"),
+    ("σ", r"$\sigma$"),
+    ("φ", r"$\phi$"),
+    ("ω", r"$\omega$"),
+)
 
 
 def _normalize_line(text: str) -> str:
     return " ".join((text or "").split()).strip()
+
+
+def _latexify_text(text: str) -> str:
+    if not text:
+        return ""
+
+    link_tokens: dict[str, str] = {}
+
+    def _protect_link(match: re.Match[str]) -> str:
+        key = f"__MD_LINK_{len(link_tokens)}__"
+        link_tokens[key] = match.group(2)
+        return f"{match.group(1)}{key}{match.group(3)}"
+
+    protected = re.sub(r"(!?\[[^\]]*\]\()([^)]+)(\))", _protect_link, text)
+    for src, dst in LATEX_SYMBOL_MAP:
+        protected = protected.replace(src, dst)
+
+    for key, value in link_tokens.items():
+        protected = protected.replace(key, value)
+    return protected
 
 
 def _dedup_keep_order(items: Iterable[str]) -> list[str]:
@@ -149,7 +203,7 @@ def build_raw_text_markdown(doc_title: str, slides: list[dict]) -> str:
         if not text_blocks and image_paths:
             lines.append("> 本页核心为图示内容")
         lines.append("")
-    return "\n".join(lines).strip() + "\n"
+    return _latexify_text("\n".join(lines).strip()) + "\n"
 
 
 def build_ai_source_markdown(doc_title: str, slides: list[dict], basic_note: str | None = None) -> str:
@@ -186,7 +240,7 @@ def build_ai_source_markdown(doc_title: str, slides: list[dict], basic_note: str
         else:
             lines.append("- 图片: 无")
         lines.append("")
-    return "\n".join(lines).strip()
+    return _latexify_text("\n".join(lines).strip())
 
 
 def _collect_key_points(slides: list[dict], max_items: int = 14) -> list[str]:
@@ -201,6 +255,43 @@ def _collect_key_points(slides: list[dict], max_items: int = 14) -> list[str]:
             if len(text) >= 6:
                 counter[text] += 1
     return [text for text, _ in counter.most_common(max_items)]
+
+
+def _build_mixed_preview(slides: list[dict], max_slides: int = 8) -> list[str]:
+    cleaned = normalize_slides(slides)
+    lines = ["## 图文混排速览"]
+    picked = 0
+
+    for slide in cleaned:
+        images = slide.get("image_paths", [])
+        if not images:
+            continue
+
+        picked += 1
+        slide_no = slide.get("slide_number", "?")
+        title = slide.get("title", f"Slide {slide_no}")
+        lines.append(f"### 第{slide_no}页：{title}")
+
+        summary = slide.get("text_blocks", [])[:2]
+        bullets = [item.get("text", "") for item in slide.get("bullet_points", [])[:3]]
+        for text in summary:
+            lines.append(f"- {text}")
+        for item in bullets:
+            if item:
+                lines.append(f"- {item}")
+        if not summary and not bullets:
+            lines.append("- 本页核心为图示内容")
+
+        lines.append(f"![第{slide_no}页图示]({images[0]})")
+        lines.append("")
+
+        if picked >= max_slides:
+            break
+
+    if picked == 0:
+        return []
+
+    return lines
 
 
 def build_basic_note(doc_title: str, slides: list[dict]) -> tuple[str, list[dict]]:
@@ -275,7 +366,7 @@ def build_basic_note(doc_title: str, slides: list[dict]) -> tuple[str, list[dict
     lines.append("2. 任选一页，说明其关键结论与依据。")
     lines.append("3. 哪些内容需要回看原课件图示？")
 
-    return "\n".join(lines).strip() + "\n", key_images
+    return _latexify_text("\n".join(lines).strip()) + "\n", key_images
 
 
 def build_final_note(doc_title: str, slides: list[dict], ai_note: str | None) -> str:
@@ -301,4 +392,9 @@ def build_final_note(doc_title: str, slides: list[dict], ai_note: str | None) ->
                 f"\n  ![]({image_item['path']})"
             )
 
-    return note.strip() + "\n"
+    if "## 图文混排速览" not in note:
+        mixed_preview = _build_mixed_preview(slides)
+        if mixed_preview:
+            note += "\n\n" + "\n".join(mixed_preview)
+
+    return _latexify_text(note.strip()) + "\n"
