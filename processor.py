@@ -199,9 +199,9 @@ def process_ppt_files(
         mode = "basic"
 
     writer = AIWriter(
-        api_key=api_key or os.getenv("OPENAI_API_KEY"),
-        api_base=api_base or os.getenv("OPENAI_BASE_URL"),
-        model=model or os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+        api_key=api_key or os.getenv("DEEPSEEK_API_KEY"),
+        api_base=api_base or os.getenv("DEEPSEEK_BASE_URL"),
+        model=model or os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
         logger=None,
     )
 

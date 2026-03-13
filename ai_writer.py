@@ -19,6 +19,7 @@ DEFAULT_PROMPT_TEMPLATE = """你是一名擅长整理大学课程资料的学习
 8. 不要省略重要术语
 9. 输出语言为中文
 10. 输出格式为 Markdown
+11. 所有数学/逻辑/希腊字母等符号请使用标准 LaTeX 写法（如 $\leq$、$\alpha$、$\to$）
 
 输出结构建议：
 # 标题
@@ -54,7 +55,7 @@ class AIWriter:
         self,
         api_key: str | None,
         api_base: str | None,
-        model: str = "gpt-4o-mini",
+        model: str = "deepseek-chat",
         timeout: int = 120,
         retries: int = 3,
         retry_delay: float = 2.0,
@@ -62,8 +63,8 @@ class AIWriter:
         logger=None,
     ) -> None:
         self.api_key = (api_key or "").strip()
-        self.api_base = (api_base or "https://api.openai.com/v1").rstrip("/")
-        self.model = (model or "gpt-4o-mini").strip()
+        self.api_base = (api_base or "https://api.deepseek.com/v1").rstrip("/")
+        self.model = (model or "deepseek-chat").strip()
         self.timeout = timeout
         self.retries = retries
         self.retry_delay = retry_delay
@@ -112,7 +113,7 @@ class AIWriter:
                 "content": (
                     f"文档标题：{doc_title}\n\n"
                     "以下是从 PPT 提取的结构化原始内容，请直接输出最终 Markdown 学习笔记。\n"
-                    "注意：仅在图片和知识点强相关时插图，不要机械堆图。\n\n"
+                    "注意：最终笔记要图文混排（文字要点后尽量跟相关图片），但仅在图片和知识点强相关时插图，不要机械堆图；并将符号统一写为标准 LaTeX。\n\n"
                     f"{extracted_content_md}"
                 ),
             },
@@ -143,7 +144,7 @@ def chat_with_note(
     writer = AIWriter(
         api_key=api_key,
         api_base=api_base,
-        model=model or "gpt-4o-mini",
+        model=model or "deepseek-chat",
     )
     if not writer.is_available():
         return None, "当前未配置 AI 对话能力"
