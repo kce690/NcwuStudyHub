@@ -269,7 +269,7 @@ def build_ui() -> gr.Blocks:
                     type="filepath",
                 )
                 mode_radio = gr.Radio(label="处理模式", choices=["普通模式", "AI 增强模式"], value="普通模式")
-                with gr.Column(visible=False) as ai_config_wrap:
+                with gr.Column(visible=False, elem_id="ai-config-wrap") as ai_config_wrap:
                     api_key = gr.Textbox(label="DeepSeek API Key", type="password", placeholder="AI 增强模式必填")
                     api_base = gr.Textbox(label="DeepSeek Base URL", value=default_api_base)
                     model = gr.Textbox(label="DeepSeek Model", value=default_model)
