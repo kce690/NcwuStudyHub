@@ -21,6 +21,12 @@ def _load_ios_css() -> str:
     return ""
 
 
+def _load_ios_js() -> str:
+    js_path = Path(__file__).resolve().parent / "ui" / "ios_jobs.js"
+    if js_path.exists():
+        return js_path.read_text(encoding="utf-8")
+    return ""
+
 
 def _build_table_rows(results: list[dict]) -> list[list[Any]]:
     rows: list[list[Any]] = []
@@ -244,11 +250,11 @@ def build_ui() -> gr.Blocks:
     with gr.Blocks(title="NCWUStudyHub", fill_width=True) as demo:
         state = gr.State({"results": [], "choices": []})
         gr.HTML(f"<style>{_load_ios_css()}</style>")
+        gr.HTML(f"<script>{_load_ios_js()}</script>")
 
         with gr.Column(elem_id="app-shell"):
             with gr.Column(elem_id="upload-screen", elem_classes=["ios-glass"], visible=True) as upload_screen:
-                gr.Markdown("## NCWUStudyHub\n### Think Different 风格学习台：上传后丝滑进入笔记对话", elem_id="hero-title")
-                gr.Markdown("- 更大字体\n- 更圆润玻璃感\n- 上方沉浸式笔记 + 下方对话输入")
+                gr.Markdown("## NCWUStudyHub\n### 上传 PPT，开始你的学习会话", elem_id="hero-title")
                 upload_files = gr.File(
                     label="上传 .pptx 文件（可多选）",
                     file_count="multiple",

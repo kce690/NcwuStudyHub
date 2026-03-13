@@ -121,3 +121,28 @@ button {
   background: rgba(255,255,255,0.72);
   border: 1px solid rgba(255,255,255,0.85);
 }
+
+.ios-screen-enter {
+  animation: iosSpringIn .56s cubic-bezier(0.22, 0.9, 0.26, 1);
+}
+
+@keyframes iosSpringIn {
+  0% { opacity: 0; transform: translateY(24px) scale(0.98); }
+  65% { opacity: 1; transform: translateY(-4px) scale(1.005); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+button.ios-press {
+  transform: scale(0.97);
+  transition: transform .12s ease;
+}
+
+input.ios-focus,
+textarea.ios-focus {
+  box-shadow: 0 0 0 3px rgba(99, 145, 255, 0.2) !important;
+  border-color: rgba(99, 145, 255, 0.7) !important;
+}
+
+body.ios-in-chat #chat-screen {
+  filter: saturate(1.03);
+}
