@@ -206,7 +206,7 @@ def clear_chat():
 
 
 def chat_submit(
-    user_message: str,
+    user_message: str | None,
     history: list[tuple[str, str]] | None,
     selected_choice: str | None,
     state: dict,
@@ -217,13 +217,13 @@ def chat_submit(
     history = history or []
     question = (user_message or "").strip()
     if not question:
-        return history, ""
+        return history, None
 
     idx = _get_selected_index(selected_choice, state or {"results": [], "choices": []})
     results = (state or {}).get("results", [])
     if idx < 0 or idx >= len(results):
         history.append((question, "请先上传并处理 PPT，再进行提问。"))
-        return history, ""
+        return history, None
 
     item = results[idx]
     current_note = item.get("note_preview", "")
@@ -233,19 +233,19 @@ def chat_submit(
         user_message=question,
         current_note_markdown=current_note,
         current_raw_text=current_raw,
-        api_key=api_key.strip() or os.getenv("OPENAI_API_KEY"),
-        api_base=api_base.strip() or os.getenv("OPENAI_BASE_URL"),
-        model=model.strip() or os.getenv("OPENAI_MODEL"),
+        api_key=api_key.strip() or os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY"),
+        api_base=api_base.strip() or os.getenv("DEEPSEEK_BASE_URL") or os.getenv("OPENAI_BASE_URL"),
+        model=model.strip() or os.getenv("DEEPSEEK_MODEL") or os.getenv("OPENAI_MODEL"),
         history=_history_to_pairs(history),
     )
     history.append((question, reply if reply else err or "当前资料中没有足够信息"))
-    return history, ""
+    return history, None
 
 
 def build_ui() -> gr.Blocks:
     load_dotenv()
-    default_api_base = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
-    default_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    default_api_base = os.getenv("DEEPSEEK_BASE_URL", os.getenv("OPENAI_BASE_URL", "https://api.deepseek.com/v1"))
+    default_model = os.getenv("DEEPSEEK_MODEL", os.getenv("OPENAI_MODEL", "deepseek-chat"))
 
     with gr.Blocks(title="NCWUStudyHub", fill_width=True) as demo:
         state = gr.State({"results": [], "choices": []})
@@ -262,9 +262,9 @@ def build_ui() -> gr.Blocks:
                     type="filepath",
                 )
                 mode_radio = gr.Radio(label="处理模式", choices=["普通模式", "AI 增强模式"], value="普通模式")
-                api_key = gr.Textbox(label="API Key", type="password", placeholder="普通模式可留空")
-                api_base = gr.Textbox(label="Base URL", value=default_api_base)
-                model = gr.Textbox(label="Model", value=default_model)
+                api_key = gr.Textbox(label="DeepSeek API Key", type="password", placeholder="普通模式可留空")
+                api_base = gr.Textbox(label="DeepSeek Base URL", value=default_api_base)
+                model = gr.Textbox(label="DeepSeek Model", value=default_model)
                 output_dir = gr.Textbox(label="输出目录", value="./output_notes_web")
                 start_btn = gr.Button("生成笔记", variant="primary", size="lg", elem_id="start-btn")
 
@@ -290,7 +290,13 @@ def build_ui() -> gr.Blocks:
                         note_download = gr.File(label="下载 note.md")
                 with gr.Column(elem_classes=["ios-glass"]):
                     chatbot = gr.Chatbot(label="学习助手", elem_id="chat-window")
-                    chat_input = gr.Textbox(label="", placeholder="继续追问笔记内容…", lines=2, elem_id="chat-input")
+                    chat_input = gr.Dropdown(
+                        label="",
+                        choices=["这份笔记的核心知识点是什么？", "请按考试重点给我3分钟速记版", "帮我按章节生成复习清单", "请解释最难的三个概念并举例"],
+                        value=None,
+                        allow_custom_value=True,
+                        elem_id="chat-question",
+                    )
                     with gr.Row():
                         send_btn = gr.Button("发送", variant="primary")
                         clear_chat_btn = gr.Button("清空对话")
@@ -341,11 +347,6 @@ def build_ui() -> gr.Blocks:
         )
 
         send_btn.click(
-            fn=chat_submit,
-            inputs=[chat_input, chatbot, file_picker, state, api_key, api_base, model],
-            outputs=[chatbot, chat_input],
-        )
-        chat_input.submit(
             fn=chat_submit,
             inputs=[chat_input, chatbot, file_picker, state, api_key, api_base, model],
             outputs=[chatbot, chat_input],

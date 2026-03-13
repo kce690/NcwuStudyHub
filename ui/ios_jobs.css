@@ -146,3 +146,17 @@ textarea.ios-focus {
 body.ios-in-chat #chat-screen {
   filter: saturate(1.03);
 }
+
+#chat-question,
+#chat-question .wrap,
+#chat-question input {
+  border-radius: 20px !important;
+}
+
+#chat-question .wrap {
+  background: linear-gradient(150deg, rgba(255,255,255,0.72), rgba(255,255,255,0.48)) !important;
+  backdrop-filter: blur(14px) saturate(135%);
+  -webkit-backdrop-filter: blur(14px) saturate(135%);
+  border: 1px solid rgba(255,255,255,0.8) !important;
+  box-shadow: 0 10px 24px rgba(28, 56, 96, 0.15);
+}
