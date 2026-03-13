@@ -44,9 +44,9 @@ def main() -> int:
         return 0
 
     writer = AIWriter(
-        api_key=os.getenv("OPENAI_API_KEY"),
-        api_base=args.api_base or os.getenv("OPENAI_BASE_URL"),
-        model=args.model or os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+        api_key=os.getenv("DEEPSEEK_API_KEY"),
+        api_base=args.api_base or os.getenv("DEEPSEEK_BASE_URL"),
+        model=args.model or os.getenv("DEEPSEEK_MODEL", "deepseek-chat"),
         logger=logger,
     )
 

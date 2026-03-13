@@ -1,0 +1,219 @@
+:root {
+  --ios-bg-1: #edf2ff;
+  --ios-bg-2: #dbe8ff;
+  --ios-bg-3: #f8fbff;
+  --ios-ink: #0f172a;
+  --ios-sub: #5b6476;
+  --ios-card: rgba(255,255,255,0.62);
+  --ios-border: rgba(255,255,255,0.68);
+  --ios-shadow: 0 24px 48px rgba(15, 23, 42, 0.16);
+  --ios-radius-xl: 34px;
+  --ios-radius-lg: 28px;
+  --ios-radius-md: 22px;
+}
+
+.gradio-container {
+  font-family: "SF Pro Display", "PingFang SC", "Helvetica Neue", Arial, sans-serif !important;
+  color: var(--ios-ink);
+  background:
+    radial-gradient(900px 420px at 90% -10%, rgba(151, 197, 255, 0.5), transparent 60%),
+    radial-gradient(780px 320px at -5% 0%, rgba(187, 224, 255, 0.55), transparent 62%),
+    linear-gradient(180deg, var(--ios-bg-1), var(--ios-bg-2) 45%, var(--ios-bg-3));
+}
+
+#app-shell {
+  max-width: 1500px;
+  margin: 0 auto;
+  padding: 18px 16px 26px;
+}
+
+.ios-glass {
+  backdrop-filter: blur(18px) saturate(145%);
+  -webkit-backdrop-filter: blur(18px) saturate(145%);
+  background: linear-gradient(155deg, rgba(255,255,255,0.74), rgba(255,255,255,0.5));
+  border: 1px solid var(--ios-border);
+  border-radius: var(--ios-radius-xl);
+  box-shadow: var(--ios-shadow);
+  padding: 24px;
+}
+
+#upload-screen,
+#chat-screen {
+  animation: pageLift .55s cubic-bezier(.2,.8,.2,1);
+}
+
+@keyframes pageLift {
+  from {opacity:0; transform: translate3d(0, 22px, 0) scale(0.985)}
+  to {opacity:1; transform: translate3d(0, 0, 0) scale(1)}
+}
+
+#hero-title h1 {
+  font-size: clamp(36px, 4.3vw, 58px);
+  letter-spacing: -0.03em;
+  margin-bottom: 8px;
+}
+#hero-title h3 {
+  font-size: clamp(20px, 2vw, 28px);
+  line-height: 1.35;
+  color: #2e3a56;
+  font-weight: 600;
+}
+#hero-title p,
+#hero-title li {
+  font-size: 18px;
+  color: var(--ios-sub);
+}
+
+label, .gr-form label, .gradio-container .wrap.svelte-1ipelgc {
+  font-size: 17px !important;
+  font-weight: 600 !important;
+}
+
+input, textarea, .gr-dropdown, .gr-box, .gr-file, .gradio-container .block {
+  border-radius: var(--ios-radius-md) !important;
+}
+
+button {
+  border-radius: 999px !important;
+  font-size: 18px !important;
+  font-weight: 700 !important;
+  padding-top: 10px !important;
+  padding-bottom: 10px !important;
+}
+
+#start-btn {
+  min-height: 58px;
+  font-size: 21px !important;
+  box-shadow: 0 12px 22px rgba(65, 124, 255, 0.32);
+}
+
+#workspace-note {
+  min-height: 62vh;
+  max-height: 70vh;
+  overflow: auto;
+  border-radius: var(--ios-radius-lg);
+  border: 1px solid rgba(230,238,255,0.95);
+  padding: 16px 18px;
+  background: rgba(255,255,255,0.8);
+}
+
+#workspace-note p,
+#workspace-note li,
+#workspace-note code {
+  font-size: 18px;
+  line-height: 1.65;
+}
+
+#chat-window {
+  min-height: 24vh;
+  max-height: 30vh;
+  border-radius: var(--ios-radius-md);
+}
+
+#chat-input textarea {
+  font-size: 18px !important;
+  min-height: 52px !important;
+}
+
+#status-pill {
+  border-radius: 999px;
+  padding: 8px 14px;
+  background: rgba(255,255,255,0.72);
+  border: 1px solid rgba(255,255,255,0.85);
+}
+
+.ios-screen-enter {
+  animation: iosSpringIn .56s cubic-bezier(0.22, 0.9, 0.26, 1);
+}
+
+@keyframes iosSpringIn {
+  0% { opacity: 0; transform: translateY(24px) scale(0.98); }
+  65% { opacity: 1; transform: translateY(-4px) scale(1.005); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+button.ios-press {
+  transform: scale(0.97);
+  transition: transform .12s ease;
+}
+
+input.ios-focus,
+textarea.ios-focus {
+  box-shadow: 0 0 0 3px rgba(99, 145, 255, 0.2) !important;
+  border-color: rgba(99, 145, 255, 0.7) !important;
+}
+
+body.ios-in-chat #chat-screen {
+  filter: saturate(1.03);
+}
+
+#chat-question,
+#chat-question .wrap,
+#chat-question input {
+  border-radius: 20px !important;
+}
+
+#chat-question .wrap {
+  background: linear-gradient(150deg, rgba(255,255,255,0.72), rgba(255,255,255,0.48)) !important;
+  backdrop-filter: blur(14px) saturate(135%);
+  -webkit-backdrop-filter: blur(14px) saturate(135%);
+  border: 1px solid rgba(255,255,255,0.8) !important;
+  box-shadow: 0 10px 24px rgba(28, 56, 96, 0.15);
+}
+
+
+/* 更简洁：上传区缩小，主内容区更占画面 */
+#upload-screen .gr-file,
+#upload-screen .gradio-file,
+#upload-screen [data-testid="file-upload"] {
+  max-width: 320px;
+}
+
+#upload-screen .gr-file > div,
+#upload-screen .gradio-file > div,
+#upload-screen [data-testid="file-upload"] > div {
+  min-height: 84px !important;
+}
+
+#chat-screen {
+  min-height: 86vh;
+}
+
+#workspace-note {
+  min-height: 66vh;
+  max-height: 76vh;
+}
+
+#chat-window {
+  min-height: 30vh;
+  max-height: 38vh;
+}
+
+
+/* 上传页：顶部上传框更小，底部 API 设置区域占主画面 */
+#upload-screen {
+  min-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#upload-screen .gr-file,
+#upload-screen .gradio-file,
+#upload-screen [data-testid="file-upload"] {
+  max-width: 320px;
+}
+
+#upload-screen #ai-config-wrap {
+  min-height: 56vh;
+  padding: 18px;
+  border-radius: 24px;
+  background: linear-gradient(160deg, rgba(255,255,255,0.70), rgba(255,255,255,0.45));
+  border: 1px solid rgba(255,255,255,0.84);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 14px 30px rgba(20, 50, 96, 0.14);
+}
+
+#upload-screen #ai-config-wrap .gr-textbox,
+#upload-screen #ai-config-wrap .gr-input {
+  min-height: 64px;
+}
