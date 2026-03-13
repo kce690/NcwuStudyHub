@@ -9,6 +9,16 @@ from dotenv import load_dotenv
 from ai_writer import chat_with_note
 from processor import process_ppt_files
 
+IOS_CSS = """
+.gradio-container {background: linear-gradient(180deg, #f5f7fb 0%, #eef2ff 100%);}
+.ios-card {background: rgba(255,255,255,0.85); border: 1px solid #e7ebf5; border-radius: 24px; box-shadow: 0 14px 36px rgba(31,55,109,.12); padding: 18px;}
+#upload-screen {animation: slideIn .45s ease;}
+#chat-screen {animation: slideIn .45s ease;}
+@keyframes slideIn {from {opacity:0; transform: translateY(22px);} to {opacity:1; transform: translateY(0);}}
+#note-preview {min-height: 58vh; max-height: 68vh; overflow:auto; border-radius: 20px; padding: 10px 14px; background: #fff; border:1px solid #edf0f7;}
+#chat-window {min-height: 22vh; max-height: 28vh; border-radius: 18px;}
+"""
+
 
 def _build_table_rows(results: list[dict]) -> list[list[Any]]:
     rows: list[list[Any]] = []
@@ -73,19 +83,8 @@ def _render_selected_file(choice: str | None, state: dict):
     return "\n".join(info), raw_preview, gallery_items, note_preview, note_file
 
 
-def _history_to_pairs(history_messages: list[dict] | None) -> list[tuple[str, str]]:
-    pairs: list[tuple[str, str]] = []
-    pending_user: str | None = None
-    for msg in history_messages or []:
-        role = (msg or {}).get("role")
-        content = str((msg or {}).get("content", ""))
-        if role == "user":
-            pending_user = content
-        elif role == "assistant":
-            if pending_user is not None:
-                pairs.append((pending_user, content))
-                pending_user = None
-    return pairs[-6:]
+def _history_to_pairs(history_messages: list[tuple[str, str]] | None) -> list[tuple[str, str]]:
+    return (history_messages or [])[-6:]
 
 
 def run_processing(
@@ -111,6 +110,8 @@ def run_processing(
             None,
             empty_state,
             [],
+            gr.update(visible=True),
+            gr.update(visible=False),
         )
 
     total = len(uploaded_files)
@@ -161,6 +162,8 @@ def run_processing(
         note_file,
         state,
         [],
+        gr.update(visible=False),
+        gr.update(visible=True),
     )
 
 
@@ -171,7 +174,7 @@ def on_select_file(choice: str, state: dict):
     return selected_info, raw_preview, gallery_items, note_preview, note_file, []
 
 
-def clear_results():
+def back_to_upload():
     empty_state = {"results": [], "choices": []}
     return (
         "### 处理摘要\n- 尚未开始",
@@ -185,6 +188,8 @@ def clear_results():
         None,
         empty_state,
         [],
+        gr.update(visible=True),
+        gr.update(visible=False),
     )
 
 
@@ -194,7 +199,7 @@ def clear_chat():
 
 def chat_submit(
     user_message: str,
-    history: list[dict] | None,
+    history: list[tuple[str, str]] | None,
     selected_choice: str | None,
     state: dict,
     api_key: str,
@@ -209,8 +214,7 @@ def chat_submit(
     idx = _get_selected_index(selected_choice, state or {"results": [], "choices": []})
     results = (state or {}).get("results", [])
     if idx < 0 or idx >= len(results):
-        history.append({"role": "user", "content": question})
-        history.append({"role": "assistant", "content": "请先上传并处理 PPT，再进行提问。"})
+        history.append((question, "请先上传并处理 PPT，再进行提问。"))
         return history, ""
 
     item = results[idx]
@@ -226,8 +230,7 @@ def chat_submit(
         model=model.strip() or os.getenv("OPENAI_MODEL"),
         history=_history_to_pairs(history),
     )
-    history.append({"role": "user", "content": question})
-    history.append({"role": "assistant", "content": reply if reply else err or "当前资料中没有足够信息"})
+    history.append((question, reply if reply else err or "当前资料中没有足够信息"))
     return history, ""
 
 
@@ -238,63 +241,48 @@ def build_ui() -> gr.Blocks:
 
     with gr.Blocks(title="NCWUStudyHub", fill_width=True) as demo:
         state = gr.State({"results": [], "choices": []})
+        gr.Markdown(f"<style>{IOS_CSS}</style>")
 
-        with gr.Row():
-            with gr.Column(scale=1):
-                gr.Markdown(
-                    "## NCWUStudyHub\n"
-                    "上传 PPT，自动整理为大学生可复习的学习笔记。"
-                )
-                upload_files = gr.File(
-                    label="上传 .pptx 文件（可多选）",
-                    file_count="multiple",
-                    file_types=[".pptx"],
-                    type="filepath",
-                )
-                mode_radio = gr.Radio(
-                    label="处理模式",
-                    choices=["普通模式", "AI 增强模式"],
-                    value="普通模式",
-                )
-                api_key = gr.Textbox(label="API Key", type="password", placeholder="普通模式可留空")
-                api_base = gr.Textbox(label="Base URL", value=default_api_base)
-                model = gr.Textbox(label="Model", value=default_model)
-                output_dir = gr.Textbox(label="输出目录", value="./output_notes_web")
+        with gr.Column(elem_id="upload-screen", elem_classes=["ios-card"], visible=True) as upload_screen:
+            gr.Markdown("## NCWUStudyHub\n### 上传 PPT，生成丝滑 iOS 风格学习笔记")
+            upload_files = gr.File(
+                label="上传 .pptx 文件（可多选）",
+                file_count="multiple",
+                file_types=[".pptx"],
+                type="filepath",
+            )
+            mode_radio = gr.Radio(label="处理模式", choices=["普通模式", "AI 增强模式"], value="普通模式")
+            api_key = gr.Textbox(label="API Key", type="password", placeholder="普通模式可留空")
+            api_base = gr.Textbox(label="Base URL", value=default_api_base)
+            model = gr.Textbox(label="Model", value=default_model)
+            output_dir = gr.Textbox(label="输出目录", value="./output_notes_web")
+            start_btn = gr.Button("生成笔记", variant="primary", size="lg")
+
+        with gr.Column(elem_id="chat-screen", visible=False) as chat_screen:
+            with gr.Row():
+                back_btn = gr.Button("← 返回上传页", variant="secondary")
+            with gr.Row():
+                with gr.Column(scale=8, elem_classes=["ios-card"]):
+                    status_md = gr.Markdown("### 处理摘要\n- 尚未开始")
+                    file_picker = gr.Dropdown(label="文件", choices=[], value=None)
+                    selected_info = gr.Markdown("暂无结果")
+                    note_preview = gr.Markdown(elem_id="note-preview")
+                with gr.Column(scale=4, elem_classes=["ios-card"]):
+                    logs_box = gr.Textbox(label="处理日志", lines=12)
+                    result_table = gr.Dataframe(
+                        headers=["文件名", "模式", "状态", "页数", "图片数", "AI", "输出目录", "信息"],
+                        datatype=["str", "str", "str", "number", "number", "str", "str", "str"],
+                        interactive=False,
+                        label="结果总览",
+                    )
+                    raw_preview = gr.Markdown(label="原始提取预览")
+                    image_gallery = gr.Gallery(label="图片预览", columns=2, height=220, type="filepath")
+                    note_download = gr.File(label="下载 note.md")
+            with gr.Column(elem_classes=["ios-card"]):
+                chatbot = gr.Chatbot(label="学习助手", elem_id="chat-window")
+                chat_input = gr.Textbox(label="", placeholder="继续追问笔记内容…", lines=2)
                 with gr.Row():
-                    start_btn = gr.Button("开始处理", variant="primary")
-                    clear_btn = gr.Button("清空结果")
-
-            with gr.Column(scale=2):
-                status_md = gr.Markdown("### 处理摘要\n- 尚未开始")
-                logs_box = gr.Textbox(label="处理日志", lines=10)
-                result_table = gr.Dataframe(
-                    headers=["文件名", "模式", "状态", "页数", "图片数", "AI", "输出目录", "信息"],
-                    datatype=["str", "str", "str", "number", "number", "str", "str", "str"],
-                    interactive=False,
-                    label="文件结果总览",
-                )
-                file_picker = gr.Dropdown(label="选择文件查看详情", choices=[], value=None)
-                selected_info = gr.Markdown("暂无结果")
-                gr.Markdown("#### 原始提取文本预览")
-                raw_preview = gr.Markdown()
-                gr.Markdown("#### 最终学习笔记预览")
-                note_preview = gr.Markdown()
-                image_gallery = gr.Gallery(label="关键图片预览", columns=4, height=240, type="filepath")
-                note_download = gr.File(label="下载 note.md")
-
-            with gr.Column(scale=1):
-                gr.Markdown(
-                    "## AI 问答区\n"
-                    "基于中间区域当前选中文件的笔记内容进行追问。"
-                )
-                chatbot = gr.Chatbot(
-                    label="学习助手对话",
-                    height=560,
-                    placeholder="请先在中间区域生成并选择一个文件结果。",
-                )
-                chat_input = gr.Textbox(label="输入问题", placeholder="例如：这一章讲了什么？")
-                with gr.Row():
-                    send_btn = gr.Button("发送")
+                    send_btn = gr.Button("发送", variant="primary")
                     clear_chat_btn = gr.Button("清空对话")
 
         start_btn.click(
@@ -312,6 +300,8 @@ def build_ui() -> gr.Blocks:
                 note_download,
                 state,
                 chatbot,
+                upload_screen,
+                chat_screen,
             ],
         )
 
@@ -321,8 +311,8 @@ def build_ui() -> gr.Blocks:
             outputs=[selected_info, raw_preview, image_gallery, note_preview, note_download, chatbot],
         )
 
-        clear_btn.click(
-            fn=clear_results,
+        back_btn.click(
+            fn=back_to_upload,
             outputs=[
                 status_md,
                 logs_box,
@@ -335,6 +325,8 @@ def build_ui() -> gr.Blocks:
                 note_download,
                 state,
                 chatbot,
+                upload_screen,
+                chat_screen,
             ],
         )
 
@@ -355,4 +347,4 @@ def build_ui() -> gr.Blocks:
 
 if __name__ == "__main__":
     app = build_ui()
-    app.launch(server_name="127.0.0.1", server_port=7860, share=False)
+    app.launch(server_name="0.0.0.0", server_port=7860, share=False)
