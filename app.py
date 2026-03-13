@@ -182,6 +182,13 @@ def on_select_file(choice: str, state: dict):
     return selected_info, raw_preview, gallery_items, note_preview, note_file, []
 
 
+
+
+def on_mode_change(mode: str):
+    show_ai = "AI" in (mode or "")
+    return gr.update(visible=show_ai)
+
+
 def back_to_upload():
     empty_state = {"results": [], "choices": []}
     return (
@@ -233,9 +240,9 @@ def chat_submit(
         user_message=question,
         current_note_markdown=current_note,
         current_raw_text=current_raw,
-        api_key=api_key.strip() or os.getenv("DEEPSEEK_API_KEY") or os.getenv("OPENAI_API_KEY"),
-        api_base=api_base.strip() or os.getenv("DEEPSEEK_BASE_URL") or os.getenv("OPENAI_BASE_URL"),
-        model=model.strip() or os.getenv("DEEPSEEK_MODEL") or os.getenv("OPENAI_MODEL"),
+        api_key=api_key.strip() or os.getenv("DEEPSEEK_API_KEY"),
+        api_base=api_base.strip() or os.getenv("DEEPSEEK_BASE_URL"),
+        model=model.strip() or os.getenv("DEEPSEEK_MODEL"),
         history=_history_to_pairs(history),
     )
     history.append((question, reply if reply else err or "当前资料中没有足够信息"))
@@ -244,8 +251,8 @@ def chat_submit(
 
 def build_ui() -> gr.Blocks:
     load_dotenv()
-    default_api_base = os.getenv("DEEPSEEK_BASE_URL", os.getenv("OPENAI_BASE_URL", "https://api.deepseek.com/v1"))
-    default_model = os.getenv("DEEPSEEK_MODEL", os.getenv("OPENAI_MODEL", "deepseek-chat"))
+    default_api_base = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
+    default_model = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 
     with gr.Blocks(title="NCWUStudyHub", fill_width=True) as demo:
         state = gr.State({"results": [], "choices": []})
@@ -262,9 +269,10 @@ def build_ui() -> gr.Blocks:
                     type="filepath",
                 )
                 mode_radio = gr.Radio(label="处理模式", choices=["普通模式", "AI 增强模式"], value="普通模式")
-                api_key = gr.Textbox(label="DeepSeek API Key", type="password", placeholder="普通模式可留空")
-                api_base = gr.Textbox(label="DeepSeek Base URL", value=default_api_base)
-                model = gr.Textbox(label="DeepSeek Model", value=default_model)
+                with gr.Column(visible=False) as ai_config_wrap:
+                    api_key = gr.Textbox(label="DeepSeek API Key", type="password", placeholder="AI 增强模式必填")
+                    api_base = gr.Textbox(label="DeepSeek Base URL", value=default_api_base)
+                    model = gr.Textbox(label="DeepSeek Model", value=default_model)
                 output_dir = gr.Textbox(label="输出目录", value="./output_notes_web")
                 start_btn = gr.Button("生成笔记", variant="primary", size="lg", elem_id="start-btn")
 
@@ -300,6 +308,12 @@ def build_ui() -> gr.Blocks:
                     with gr.Row():
                         send_btn = gr.Button("发送", variant="primary")
                         clear_chat_btn = gr.Button("清空对话")
+
+        mode_radio.change(
+            fn=on_mode_change,
+            inputs=[mode_radio],
+            outputs=[ai_config_wrap],
+        )
 
         start_btn.click(
             fn=run_processing,

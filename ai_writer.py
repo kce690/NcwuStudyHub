@@ -55,7 +55,7 @@ class AIWriter:
         self,
         api_key: str | None,
         api_base: str | None,
-        model: str = "gpt-4o-mini",
+        model: str = "deepseek-chat",
         timeout: int = 120,
         retries: int = 3,
         retry_delay: float = 2.0,
@@ -63,8 +63,8 @@ class AIWriter:
         logger=None,
     ) -> None:
         self.api_key = (api_key or "").strip()
-        self.api_base = (api_base or "https://api.openai.com/v1").rstrip("/")
-        self.model = (model or "gpt-4o-mini").strip()
+        self.api_base = (api_base or "https://api.deepseek.com/v1").rstrip("/")
+        self.model = (model or "deepseek-chat").strip()
         self.timeout = timeout
         self.retries = retries
         self.retry_delay = retry_delay
@@ -144,7 +144,7 @@ def chat_with_note(
     writer = AIWriter(
         api_key=api_key,
         api_base=api_base,
-        model=model or "gpt-4o-mini",
+        model=model or "deepseek-chat",
     )
     if not writer.is_available():
         return None, "当前未配置 AI 对话能力"

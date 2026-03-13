@@ -113,9 +113,9 @@ Copy-Item .env.example .env
 `.env` 示例：
 
 ```env
-OPENAI_API_KEY=your_api_key_here
-OPENAI_BASE_URL=https://api.openai.com/v1
-OPENAI_MODEL=gpt-4o-mini
+DEEPSEEK_API_KEY=your_api_key_here
+DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
+DEEPSEEK_MODEL=deepseek-chat
 ```
 
 ### 4) 启动 Web
