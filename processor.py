@@ -226,35 +226,40 @@ def process_ppt_files(
         source_path = getattr(file_obj, "name", file_obj)
         src_file = Path(str(source_path))
         emit(f"[{idx}/{total}] 准备处理 {src_file.name}")
+        item_result = _empty_result(src_file.name)
+        item_result["mode"] = mode
+        item_result["source_file"] = str(src_file)
 
-        if src_file.suffix.lower() != ".pptx":
-            item = _empty_result(src_file.name)
-            item["error"] = "仅支持 .pptx 文件"
-            item["mode"] = mode
-            results.append(item)
-            emit(f"[{src_file.name}] 文件格式不支持，已跳过")
-            continue
+        try:
+            if src_file.suffix.lower() != ".pptx":
+                item_result["error"] = "仅支持 .pptx 文件"
+                emit(f"[{src_file.name}] 文件格式不支持，已跳过")
+                results.append(item_result)
+                continue
 
-        copied_name = f"{idx:03d}_{safe_name(src_file.name)}"
-        copied_path = session_dir / copied_name
-        shutil.copy2(src_file, copied_path)
+            copied_name = f"{idx:03d}_{safe_name(src_file.name)}"
+            copied_path = session_dir / copied_name
+            shutil.copy2(src_file, copied_path)
 
-        base_stem = safe_name(src_file.stem)
-        used_stems[base_stem] = used_stems.get(base_stem, 0) + 1
-        output_stem = base_stem if used_stems[base_stem] == 1 else f"{base_stem}_{used_stems[base_stem]}"
+            base_stem = safe_name(src_file.stem)
+            used_stems[base_stem] = used_stems.get(base_stem, 0) + 1
+            output_stem = base_stem if used_stems[base_stem] == 1 else f"{base_stem}_{used_stems[base_stem]}"
 
-        item_result = process_single_pptx(
-            src_file=copied_path,
-            output_root=output_root,
-            overwrite=overwrite,
-            ai_writer=writer,
-            mode=mode,
-            output_stem=output_stem,
-            status_callback=emit,
-        )
-        item_result["file_name"] = src_file.name
-        results.append(item_result)
-
+            item_result = process_single_pptx(
+                src_file=copied_path,
+                output_root=output_root,
+                overwrite=overwrite,
+                ai_writer=writer,
+                mode=mode,
+                output_stem=output_stem,
+                status_callback=emit,
+            )
+            item_result["file_name"] = src_file.name
+            results.append(item_result)
+        except Exception as exc:  # noqa: BLE001
+            item_result["error"] = str(exc)
+            emit(f"[{src_file.name}] 处理失败: {exc}")
+            results.append(item_result)
     success_count = sum(1 for r in results if r.get("success"))
     fail_count = len(results) - success_count
     emit(f"处理完成：成功 {success_count}，失败 {fail_count}，输出目录：{output_root}")

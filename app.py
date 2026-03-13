@@ -12,6 +12,30 @@ from ai_writer import chat_with_note
 from processor import process_ppt_files
 
 
+def _patch_gradio_local_startup_request() -> None:
+    # On Windows, system proxy settings can cause Gradio's localhost checks
+    # (startup-events/url_ok) to go through a proxy and return 502.
+    # Patch httpx for localhost only so external requests keep default behavior.
+    import httpx
+
+    def _patch_method(method_name: str) -> None:
+        original = getattr(httpx, method_name, None)
+        if not callable(original) or getattr(original, "_ncwu_local_patch", False):
+            return
+
+        def _patched(url, *args, **kwargs):
+            url_str = str(url)
+            if "127.0.0.1" in url_str or "localhost" in url_str:
+                kwargs.setdefault("trust_env", False)
+            return original(url, *args, **kwargs)
+
+        _patched._ncwu_local_patch = True  # type: ignore[attr-defined]
+        setattr(httpx, method_name, _patched)
+
+    _patch_method("get")
+    _patch_method("head")
+
+
 @lru_cache(maxsize=1)
 def _load_ios_css() -> str:
     css_path = Path(__file__).resolve().parent / "ui" / "ios_jobs.css"
@@ -130,18 +154,39 @@ def run_processing(
         fraction = min(update_counter["count"] / (total * 7), 0.98)
         progress(fraction, desc=msg)
 
-    mode = (mode or "普通模式").strip()
-    mode_value = "basic" if "普通" in mode else "ai"
-    summary = process_ppt_files(
-        uploaded_files=uploaded_files,
-        mode=mode_value,
-        api_key=api_key.strip() or None,
-        api_base=api_base.strip() or None,
-        model=model.strip() or None,
-        output_dir=output_dir.strip() or "./output_notes_web",
-        overwrite=True,
-        status_callback=on_status,
-    )
+    mode_text = (mode or "").strip()
+    mode_value = "ai" if "AI" in mode_text.upper() else "basic"
+
+    try:
+        summary = process_ppt_files(
+            uploaded_files=uploaded_files,
+            mode=mode_value,
+            api_key=api_key.strip() or None,
+            api_base=api_base.strip() or None,
+            model=model.strip() or None,
+            output_dir=output_dir.strip() or "./output_notes_web",
+            overwrite=True,
+            status_callback=on_status,
+        )
+    except Exception as exc:  # noqa: BLE001
+        progress(1.0, desc="处理失败")
+        error_text = f"{type(exc).__name__}: {exc}"
+        failed_state = {"results": [], "choices": []}
+        return (
+            "### 处理摘要\n- 状态：失败",
+            f"生成过程异常：{error_text}",
+            [],
+            gr.update(choices=[], value=None),
+            "暂无结果",
+            "",
+            [],
+            "",
+            None,
+            failed_state,
+            [],
+            gr.update(visible=True),
+            gr.update(visible=False),
+        )
     progress(1.0, desc="处理完成")
 
     results = summary["results"]
@@ -371,5 +416,6 @@ def build_ui() -> gr.Blocks:
 
 
 if __name__ == "__main__":
+    _patch_gradio_local_startup_request()
     app = build_ui()
-    app.launch(server_name="0.0.0.0", server_port=7860, share=False)
+    app.launch(server_name="127.0.0.1", server_port=7860, share=False)
